@@ -1,414 +1,16 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="./support.js"></script>
-</head>
-<body>
-<x-dc>
-<helmet>
-<link rel="stylesheet" href="_ds/nocturne-32e01e88-39db-4e26-80d8-18b9881f6bb5/styles.css">
-<script src="_ds/nocturne-32e01e88-39db-4e26-80d8-18b9881f6bb5/_ds_bundle.js"></script>
-<style>
-html,body{height:100%}
-body{margin:0;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-size:13px}
-a{color:var(--color-accent)}a:hover{color:var(--color-accent-300)}
-.mono{font-family:ui-monospace,'SF Mono',Menlo,monospace}
-.stp{padding:3px 10px;border-radius:4px;font-size:11px;color:var(--color-neutral-500);background:transparent;border:none;cursor:pointer;font-family:var(--font-body)}
-.stp:hover{color:var(--color-neutral-300)}
-.stp.on{color:var(--color-accent-300);background:color-mix(in srgb,var(--color-accent) 12%,transparent)}
-.stp:disabled{opacity:.4;cursor:not-allowed}
-.tb{min-width:30px;height:26px;display:inline-flex;align-items:center;justify-content:center;gap:5px;border:1px solid var(--color-neutral-800);border-radius:4px;background:var(--color-surface);color:var(--color-neutral-300);cursor:pointer;font-size:11px;padding:0 7px;font-family:var(--font-body)}
-.tb:hover{border-color:var(--color-accent-700);color:var(--color-accent-300)}
-.tb:disabled{opacity:.4;cursor:not-allowed}
-.tb.on{color:var(--color-accent-200);background:var(--color-accent-800);border-color:var(--color-accent-700)}
-.msb{width:17px;height:15px;display:grid;place-items:center;font-size:8.5px;border:1px solid var(--color-neutral-800);border-radius:3px;color:var(--color-neutral-500);background:transparent;cursor:pointer;padding:0}
-.msb:hover{color:var(--color-accent-300);border-color:var(--color-accent-700)}
-.msb.on{color:var(--color-accent-200);background:var(--color-accent-800);border-color:var(--color-accent-700)}
-input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-input[type=number]{-moz-appearance:textfield;appearance:textfield}
-input[type=range]{appearance:none;-webkit-appearance:none;height:3px;border-radius:2px;background:var(--color-neutral-800);cursor:pointer}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;background:var(--color-neutral-300);border:none}
-input[type=range]::-webkit-slider-thumb:hover{background:var(--color-accent-300)}
-input[type=range]::-moz-range-thumb{width:11px;height:11px;border-radius:50%;background:var(--color-neutral-300);border:none}
-*{scrollbar-width:thin;scrollbar-color:var(--color-neutral-800) transparent}
-*::-webkit-scrollbar{height:9px;width:9px}
-*::-webkit-scrollbar-thumb{background:var(--color-neutral-800);border-radius:5px}
-*::-webkit-scrollbar-track{background:transparent}
-@keyframes osscpulse{0%,100%{opacity:.45}50%{opacity:1}}
-.btn{white-space:nowrap;flex:none}
-</style>
-</helmet>
-<div style="min-height:100vh;display:flex;flex-direction:column">
-  <div style="display:flex;align-items:center;gap:14px;padding:8px 16px;background:var(--color-surface);border-bottom:1px solid var(--color-divider);flex:none">
-    <span style="font-weight:500;letter-spacing:.1em;font-size:14px">OSSC</span>
-    <span style="font-size:11px;color:var(--color-neutral-500)">Octatrack Stem Slice Creator</span>
-    <span style="font-size:12px;color:var(--color-neutral-500)">{{ metaLabel }}</span>
-    <div style="display:flex;gap:2px;margin-left:auto">
-      <sc-for list="{{ stepsVm }}" as="st" hint-placeholder-count="6">
-        <button class="stp {{ st.cls }}" onClick="{{ st.onClick }}" disabled="{{ st.disabled }}">{{ st.label }}</button>
-      </sc-for>
-    </div>
-  </div>
+import React from 'react';
+import * as core from './lib/index.js';
+import Header from './components/Header.jsx';
+import FilesStep from './components/FilesStep.jsx';
+import TempoStep from './components/TempoStep.jsx';
+import RegionsStep from './components/RegionsStep.jsx';
+import ResultsStep from './components/ResultsStep.jsx';
+import ExportStep from './components/ExportStep.jsx';
+import ProjectStep from './components/ProjectStep.jsx';
 
-  <sc-if value="{{ isFiles }}" hint-placeholder-val="{{ true }}">
-  <div style="flex:1;display:grid;grid-template-columns:minmax(340px,420px) 1fr;gap:18px;padding:22px 24px;align-content:start">
-    <div style="display:flex;flex-direction:column;gap:14px">
-      <div onDragOver="{{ onDragOver }}" onDrop="{{ onDrop }}" onClick="{{ onPickFiles }}" style="border:1px dashed var(--color-neutral-700);border-radius:var(--radius-md);padding:36px 24px;text-align:center;cursor:pointer;background:color-mix(in srgb,var(--color-surface) 55%,transparent)" style-hover="border-color:var(--color-accent-600)">
-        <div style="font-size:15px;color:var(--color-neutral-200);margin-bottom:6px">Drop stems + arrangement MIDI</div>
-        <div style="font-size:12px;color:var(--color-neutral-500);line-height:1.6">5–6 stereo WAV stems (44.1 kHz, 16/24-bit)<br>plus one MIDI file — a note at each section start<br>and one final note at the song's end</div>
-        <div style="margin-top:14px"><span class="btn btn-secondary" style="font-size:12px;pointer-events:none">Browse files</span></div>
-        <sc-if value="{{ isReading }}" hint-placeholder-val="{{ false }}"><div style="margin-top:10px;font-size:11.5px;color:var(--color-accent-300);animation:osscpulse 1.2s infinite">{{ readingLabel }}</div></sc-if>
-      </div>
-      <input type="file" multiple="{{ true }}" accept=".wav,.mid,.midi" style="display:none" ref="{{ fileInputRef }}" onChange="{{ onFileInput }}">
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-        <span style="font-size:11px;color:var(--color-neutral-500)">{{ demoLead }}</span>
-        <sc-for list="{{ demosVm }}" as="d" hint-placeholder-count="3">
-          <button class="btn btn-ghost" style="font-size:12px;padding:2px 8px" onClick="{{ d.onClick }}" disabled="{{ demoLoading }}">{{ d.label }}</button>
-        </sc-for>
-      </div>
-      <div style="font-size:11px;color:var(--color-neutral-600);line-height:1.6">Fully client-side — audio and project data never leave this browser. Nothing is uploaded, nothing is stored.</div>
-      <sc-if value="{{ hasFilesError }}" hint-placeholder-val="{{ false }}">
-        <div style="font-size:12px;color:var(--color-accent-300);background:var(--color-accent-900);border:1px solid var(--color-accent-800);border-radius:var(--radius-md);padding:10px 12px;white-space:pre-line">{{ filesError }}</div>
-      </sc-if>
-      <sc-if value="{{ hasMidi }}" hint-placeholder-val="{{ false }}">
-        <div class="card elev-sm">
-          <div class="card-kicker">Arrangement MIDI</div>
-          <div style="display:flex;align-items:baseline;gap:10px"><span class="mono" style="font-size:13px">{{ midiName }}</span><button class="btn btn-ghost" style="font-size:11px;padding:0 4px" onClick="{{ onRemoveMidi }}">remove</button></div>
-          <div style="font-size:11.5px;color:var(--color-neutral-500)">{{ midiSummary }}</div>
-        </div>
-      </sc-if>
-    </div>
-    <div style="min-width:0">
-      <h6 style="color:var(--color-neutral-500);margin-bottom:10px">Stems <span style="text-transform:none;letter-spacing:0">{{ stemCountLabel }}</span></h6>
-      <sc-if value="{{ hasStems }}" hint-placeholder-val="{{ true }}">
-        <div style="display:flex;flex-direction:column">
-          <sc-for list="{{ stemsVm }}" as="s" hint-placeholder-count="5">
-            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid color-mix(in srgb,var(--color-neutral-800) 55%,transparent)">
-              <span class="mono" style="width:16px;font-size:12px;color:var(--color-accent-300)">{{ s.num }}</span>
-              <input class="input" style="width:150px;min-height:30px;padding:3px 8px;font-size:12.5px;letter-spacing:.05em" value="{{ s.name }}" onChange="{{ s.onName }}">
-              <span style="font-size:11px;color:var(--color-neutral-500);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.fileName }}</span>
-              <span class="mono" style="font-size:10.5px;color:var(--color-neutral-500)">{{ s.props }}</span>
-              <sc-if value="{{ s.hasWarn }}" hint-placeholder-val="{{ false }}"><span class="tag tag-accent" style="font-size:10px" title="{{ s.warnText }}">{{ s.warnText }}</span></sc-if>
-              <div style="display:flex;gap:3px">
-                <button class="msb" style="width:20px;height:18px" onClick="{{ s.onUp }}" disabled="{{ s.first }}">▲</button>
-                <button class="msb" style="width:20px;height:18px" onClick="{{ s.onDown }}" disabled="{{ s.last }}">▼</button>
-                <button class="msb" style="width:20px;height:18px" onClick="{{ s.onRemove }}">✕</button>
-              </div>
-            </div>
-          </sc-for>
-        </div>
-      </sc-if>
-      <sc-if value="{{ noStems }}" hint-placeholder-val="{{ false }}">
-        <div style="font-size:12px;color:var(--color-neutral-600);padding:24px 0">No stems yet — drop WAV files on the left. Order here becomes the Octatrack track order (matters for scene locks in the project builder).</div>
-      </sc-if>
-      <div style="margin-top:18px;display:flex;gap:10px;align-items:center">
-        <button class="btn btn-primary" onClick="{{ onContinueFiles }}" disabled="{{ cantContinueFiles }}">Continue → Tempo</button>
-        <span style="font-size:11.5px;color:var(--color-neutral-500)">{{ filesHint }}</span>
-      </div>
-    </div>
-  </div>
-  </sc-if>
+export default class App extends React.Component {
+  static defaultProps = { defaultThresholdDb: -60, waveStyle: 'spectral', showScopes: true, compactLanes: false };
 
-  <sc-if value="{{ isTempo }}" hint-placeholder-val="{{ false }}">
-  <div style="flex:1;padding:34px 24px;max-width:560px">
-    <h6 style="color:var(--color-neutral-500)">Confirm tempo</h6>
-    <p style="font-size:12.5px;color:var(--color-neutral-400);max-width:420px">Every cut is computed from this BPM — positions are derived cumulatively from song start, so it must match the session the stems were bounced from.</p>
-    <div style="display:flex;align-items:center;gap:16px;margin:18px 0 6px">
-      <input class="input mono" type="number" step="0.01" min="30" max="300" style="width:170px;font-size:34px;min-height:60px;padding:6px 14px;letter-spacing:.04em;color:var(--color-accent-300)" value="{{ bpmStr }}" onChange="{{ onBpm }}" onBlur="{{ onBpmCommit }}" onKeyDown="{{ onBpmKey }}">
-      <span style="font-size:11px;letter-spacing:.12em;color:var(--color-neutral-500)">BPM</span>
-    </div>
-    <div style="font-size:11.5px;color:var(--color-neutral-500);margin-bottom:20px">{{ bpmSource }}</div>
-    <div style="display:flex;gap:28px;font-size:12px;color:var(--color-neutral-400);margin-bottom:22px">
-      <div><div style="font-size:10px;letter-spacing:.1em;color:var(--color-neutral-600);text-transform:uppercase;margin-bottom:2px">Samples / measure</div><span class="mono" style="color:var(--color-neutral-200)">{{ spmLabel }}</span></div>
-      <div><div style="font-size:10px;letter-spacing:.1em;color:var(--color-neutral-600);text-transform:uppercase;margin-bottom:2px">Song length</div><span class="mono" style="color:var(--color-neutral-200)">{{ songLenLabel }}</span></div>
-      <div><div style="font-size:10px;letter-spacing:.1em;color:var(--color-neutral-600);text-transform:uppercase;margin-bottom:2px">Regions</div><span class="mono" style="color:var(--color-neutral-200)">{{ regionCountLabel }}</span></div>
-    </div>
-    <div class="field" style="max-width:260px;margin-bottom:24px">
-      <label>Song abbreviation (used in file names)</label>
-      <input class="input" value="{{ abbrev }}" onChange="{{ onAbbrev }}" placeholder="e.g. Shake">
-    </div>
-    <sc-if value="{{ hasBpmError }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--color-accent-300);margin-bottom:14px">{{ bpmError }}</div></sc-if>
-    <button class="btn btn-primary" onClick="{{ onConfirmTempo }}">Confirm → Regions</button>
-  </div>
-  </sc-if>
-
-  <sc-if value="{{ isRegions }}" hint-placeholder-val="{{ false }}">
-  <div style="flex:1;padding:26px 24px;max-width:1060px">
-    <h6 style="color:var(--color-neutral-500)">Regions → patterns</h6>
-    <p style="font-size:12.5px;color:var(--color-neutral-400);max-width:560px">One arrangement section = one pattern, starting at Bank 2 (Bank 1 stays yours for an intro). Names are optional — they label the timeline and the table.</p>
-    <sc-if value="{{ hasRegionNotices }}" hint-placeholder-val="{{ false }}">
-      <div style="display:flex;flex-direction:column;gap:4px;margin:10px 0 4px">
-        <sc-for list="{{ regionNotices }}" as="n" hint-placeholder-count="1"><div style="font-size:11.5px;color:var(--color-accent-300)">◆ {{ n.text }}</div></sc-for>
-      </div>
-    </sc-if>
-    <table class="table" style="margin-top:12px;max-width:1020px">
-      <thead><tr><th style="width:34px">#</th><th style="width:220px">Name</th><th>Pattern</th><th>Start bar</th><th>Bars</th><th>Scale</th><th>Master</th><th></th></tr></thead>
-      <tbody>
-        <sc-for list="{{ regionsVm }}" as="r" hint-placeholder-count="8">
-          <tr>
-            <td class="mono" style="color:var(--color-accent-300)">{{ r.num }}</td>
-            <td><input class="input" style="min-height:28px;padding:2px 8px;font-size:12.5px" value="{{ r.name }}" onChange="{{ r.onName }}" placeholder="{{ r.ph }}"></td>
-            <td><span class="tag tag-neutral mono" style="font-size:10.5px">{{ r.bp }}</span></td>
-            <td class="mono" style="font-size:12px">{{ r.startBar }}</td>
-            <td class="mono" style="font-size:12px">{{ r.len }}</td>
-            <td class="mono" style="font-size:12px;color:var(--color-neutral-300)">{{ r.scale }}</td>
-            <td class="mono" style="font-size:11px;color:var(--color-neutral-500)">{{ r.master }}</td>
-            <td><sc-if value="{{ r.tooLong }}" hint-placeholder-val="{{ false }}"><span class="tag tag-outline" style="font-size:10px">&gt; 32 bars</span></sc-if></td>
-          </tr>
-        </sc-for>
-      </tbody>
-    </table>
-    <div style="margin-top:20px;display:flex;align-items:center;gap:14px">
-      <button class="btn btn-primary" onClick="{{ onAnalyze }}" disabled="{{ analyzing }}">{{ analyzeLabel }}</button>
-      <sc-if value="{{ analyzing }}" hint-placeholder-val="{{ false }}">
-        <span style="font-size:12px;color:var(--color-accent-300);animation:osscpulse 1.2s infinite">{{ progress }}</span>
-      </sc-if>
-    </div>
-  </div>
-  </sc-if>
-
-  <sc-if value="{{ isResults }}" hint-placeholder-val="{{ false }}">
-  <div style="flex:1;display:flex;flex-direction:column;min-height:0">
-    <div style="display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid var(--color-divider);flex-wrap:wrap">
-      <button class="tb" onClick="{{ onToStart }}" title="Back to bar 1"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 0h1.6v10H2zM9 0L3.8 5 9 10z" fill="currentColor"></path></svg></button>
-      <button class="tb {{ playCls }}" onClick="{{ onPlay }}" title="Play (space)"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 0l8 5-8 5z" fill="currentColor"></path></svg></button>
-      <button class="tb" onClick="{{ onStop }}" title="Stop (space)"><svg width="9" height="9" viewBox="0 0 9 9"><rect width="9" height="9" fill="currentColor"></rect></svg></button>
-      <span class="mono" style="font-size:14px;letter-spacing:.08em;color:var(--color-accent-300);border:1px solid var(--color-neutral-800);border-radius:4px;padding:2px 10px;background:var(--color-surface);min-width:74px;text-align:center" ref="{{ posRef }}">{{ posLabel }}</span>
-      <span style="font-size:10.5px;color:var(--color-neutral-500)">from bar <b class="mono" style="color:var(--color-neutral-300);font-weight:500">{{ startMeasure }}</b> — click the ruler to move</span>
-      <sc-if value="{{ hasLoop }}" hint-placeholder-val="{{ false }}">
-        <button class="tag tag-accent" style="font-size:10px;border:none;cursor:pointer" onClick="{{ onClearLoop }}" title="Release loop">⟳ looping {{ loopLabel }} ✕</button>
-      </sc-if>
-      <div style="display:inline-flex;flex:none;align-items:center;gap:6px;margin-left:8px">
-        <span style="font-size:10px;color:var(--color-neutral-500)">VOL</span>
-        <input type="range" min="0" max="1" step="0.01" style="width:90px" value="{{ vol }}" onChange="{{ onVol }}">
-        <canvas ref="{{ masterMeterRef }}" width="66" height="10" style="width:66px;height:10px;background:var(--color-neutral-900);border-radius:2px" title="Master level"></canvas>
-      </div>
-      <div style="display:inline-flex;flex:none;align-items:center;gap:4px;margin-left:8px">
-        <span style="font-size:10px;color:var(--color-neutral-500)">THRESHOLD</span>
-        <input type="range" min="-100" max="-6" step="1" style="width:78px" value="{{ thresholdVal }}" onChange="{{ onThresholdSlide }}">
-        <button class="tb" style="min-width:22px;height:22px" onClick="{{ onThDown }}" title="−3 dB">−</button>
-        <input class="input mono" type="text" inputMode="numeric" style="width:46px;min-height:26px;padding:2px 4px;font-size:12px;text-align:center" value="{{ thresholdStr }}" onChange="{{ onThresholdDraft }}" onBlur="{{ onThresholdCommit }}" onKeyDown="{{ onThresholdKey }}">
-        <button class="tb" style="min-width:22px;height:22px" onClick="{{ onThUp }}" title="+3 dB">+</button>
-        <span style="font-size:10px;color:var(--color-neutral-500)">dBFS</span>
-      </div>
-      <div style="display:inline-flex;flex:none;gap:4px;align-items:center;margin-left:8px">
-        <span style="font-size:10px;color:var(--color-neutral-500)">ZOOM</span>
-        <button class="tb" style="min-width:24px;height:22px" onClick="{{ onZoomOut }}">−</button>
-        <button class="tb" style="min-width:24px;height:22px" onClick="{{ onZoomIn }}">+</button>
-        <button class="tb" style="height:22px" onClick="{{ onZoomFit }}">Fit</button>
-      </div>
-      <div style="display:inline-flex;flex:none;gap:4px;align-items:center;margin-left:8px">
-        <span style="font-size:10px;color:var(--color-neutral-500)">WAVE</span>
-        <div class="seg" style="border-radius:4px">
-          <label class="seg-opt" style="padding:3px 8px;font-size:10.5px"><input type="radio" name="wv" checked="{{ wvSpec }}" onChange="{{ onWvSpec }}">Spectral</label>
-          <label class="seg-opt" style="padding:3px 8px;font-size:10.5px"><input type="radio" name="wv" checked="{{ wvBand }}" onChange="{{ onWvBand }}">Band</label>
-          <label class="seg-opt" style="padding:3px 8px;font-size:10.5px"><input type="radio" name="wv" checked="{{ wvBars }}" onChange="{{ onWvBars }}">Bars</label>
-        </div>
-        <button class="tb {{ scopeCls }}" style="height:24px" onClick="{{ onToggleScopes }}" title="Per-track oscilloscopes">Scopes</button>
-        <button class="tb {{ fftCls }}" style="height:24px" onClick="{{ onToggleFft }}" title="Per-track spectrum analyzer">FFT</button>
-      </div>
-      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-        <sc-if value="{{ hasWarnings }}" hint-placeholder-val="{{ false }}">
-          <button class="tb" onClick="{{ onToggleWarn }}"><span style="color:var(--color-accent-300)">◆</span> {{ warnCount }} warnings</button>
-        </sc-if>
-        <div class="seg" style="border-radius:4px">
-          <label class="seg-opt" style="padding:4px 10px;font-size:11px"><input type="radio" name="v" checked="{{ viewTl }}" onChange="{{ onViewTl }}">Timeline</label>
-          <label class="seg-opt" style="padding:4px 10px;font-size:11px"><input type="radio" name="v" checked="{{ viewTable }}" onChange="{{ onViewTable }}">Table</label>
-        </div>
-        <button class="btn btn-primary" style="padding:4px 12px;font-size:12px" onClick="{{ goExport }}">Export →</button>
-      </div>
-    </div>
-    <sc-if value="{{ showWarn }}" hint-placeholder-val="{{ false }}">
-      <div style="padding:8px 16px;border-bottom:1px solid var(--color-divider);display:flex;flex-direction:column;gap:3px;background:color-mix(in srgb,var(--color-surface) 55%,transparent)">
-        <sc-for list="{{ warningsVm }}" as="w" hint-placeholder-count="3"><div style="font-size:11.5px;color:var(--color-neutral-400)"><span style="color:var(--color-accent-300)">◆</span> {{ w.text }}</div></sc-for>
-      </div>
-    </sc-if>
-
-    <sc-if value="{{ viewTl }}" hint-placeholder-val="{{ true }}">
-    <div style="flex:1;display:grid;grid-template-columns:{{ railCols }};min-height:0">
-      <div style="border-right:1px solid var(--color-neutral-800)">
-        <div style="height:58px;border-bottom:1px solid var(--color-neutral-800)"></div>
-        <sc-for list="{{ lanes }}" as="lane" hint-placeholder-count="5">
-          <div style="height:{{ laneH }}px;display:flex;align-items:center;gap:5px;padding:0 8px;border-bottom:1px solid color-mix(in srgb,var(--color-neutral-800) 45%,transparent);font-size:11px;letter-spacing:.06em;color:var(--color-neutral-300)">
-            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ lane.name }}</span>
-            <span style="display:flex;gap:3px;flex:none">
-              <button class="msb {{ lane.mCls }}" onClick="{{ lane.onMute }}">M</button>
-              <button class="msb {{ lane.sCls }}" onClick="{{ lane.onSolo }}">S</button>
-            </span>
-            <sc-if value="{{ scopesOn }}" hint-placeholder-val="{{ false }}">
-              <canvas ref="{{ lane.scopeRef }}" width="54" height="34" style="flex:none;width:54px;height:calc(100% - 12px);background:var(--color-bg);border:1px solid color-mix(in srgb,var(--color-neutral-800) 60%,transparent);border-radius:3px"></canvas>
-            </sc-if>
-            <canvas ref="{{ lane.meterRef }}" width="5" height="40" style="flex:none;width:5px;height:calc(100% - 12px);background:var(--color-neutral-900);border-radius:2px"></canvas>
-          </div>
-        </sc-for>
-      </div>
-      <div style="overflow-x:auto;overflow-y:hidden" ref="{{ scrollRef }}">
-        <div style="position:relative;width:{{ tlWidth }}px">
-          <div style="height:40px;position:relative;border-bottom:1px solid color-mix(in srgb,var(--color-neutral-800) 55%,transparent)">
-            <sc-for list="{{ regionBlocks }}" as="rb" hint-placeholder-count="8">
-              <div style="position:absolute;top:0;bottom:0;left:{{ rb.left }}px;width:{{ rb.width }}px;border-left:1px solid var(--color-neutral-800);padding:4px 24px 3px 8px;min-width:0;overflow:hidden;white-space:nowrap;background:{{ rb.bg }}">
-                <div style="font-size:10.5px;font-weight:500;color:var(--color-neutral-200);letter-spacing:.03em;overflow:hidden;text-overflow:ellipsis">{{ rb.title }}</div>
-                <div class="mono" style="font-size:9.5px;color:var(--color-neutral-500);overflow:hidden;text-overflow:ellipsis">{{ rb.sub }}</div>
-                <button class="msb {{ rb.loopCls }}" style="position:absolute;top:3px;right:3px;width:18px;height:16px;font-size:11px;line-height:1" onClick="{{ rb.onLoop }}" title="Loop this section">⟳</button>
-              </div>
-            </sc-for>
-          </div>
-          <div style="height:18px;position:relative;border-bottom:1px solid var(--color-neutral-800);cursor:pointer;background-image:{{ rulerGrid }}" onClick="{{ onRulerClick }}">
-            <sc-for list="{{ barTicks }}" as="bt" hint-placeholder-count="10">
-              <span class="mono" style="position:absolute;left:{{ bt.left }}px;top:2px;font-size:9px;color:var(--color-neutral-500);padding-left:3px;border-left:1px solid var(--color-neutral-700);pointer-events:none">{{ bt.n }}</span>
-            </sc-for>
-          </div>
-          <sc-for list="{{ lanes }}" as="lane" hint-placeholder-count="5">
-            <div onClick="{{ onDeselect }}" style="height:{{ laneH }}px;position:relative;border-bottom:1px solid color-mix(in srgb,var(--color-neutral-800) 45%,transparent);background-image:{{ laneGrid }};opacity:{{ lane.op }}">
-              <sc-for list="{{ lane.slices }}" as="sl">
-                <div onClick="{{ sl.onClick }}" onDoubleClick="{{ sl.onDbl }}" title="{{ sl.tip }}" style="position:absolute;top:5px;bottom:5px;left:{{ sl.left }}px;width:{{ sl.width }}px;background:var(--color-accent-900);border:1px solid {{ sl.border }};border-radius:3px;overflow:hidden;cursor:pointer;box-shadow:{{ sl.glow }}" style-hover="border-color:var(--color-accent-500)">
-                  <svg viewBox="{{ sl.vb }}" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;display:block">
-                    <path d="{{ sl.p1 }}" fill="{{ sl.f1 }}" opacity="{{ sl.o1 }}"></path>
-                    <path d="{{ sl.p2 }}" fill="{{ sl.f2 }}"></path>
-                    <path d="{{ sl.p3 }}" fill="{{ sl.f3 }}"></path>
-                  </svg>
-                  <b class="mono" style="position:absolute;top:0;left:4px;font-size:9px;font-weight:500;color:var(--color-accent-200)">{{ sl.num }}</b>
-                </div>
-              </sc-for>
-            </div>
-          </sc-for>
-          <sc-for list="{{ regionLines }}" as="rl">
-            <div style="position:absolute;top:40px;bottom:0;left:{{ rl.left }}px;width:1px;background:color-mix(in srgb,var(--color-neutral-600) 45%,transparent);pointer-events:none"></div>
-          </sc-for>
-          <div ref="{{ playheadRef }}" style="position:absolute;top:0;bottom:0;left:0;width:1px;background:var(--color-accent);box-shadow:0 0 6px var(--color-accent);pointer-events:none;transform:translateX({{ playheadPx }}px)"></div>
-        </div>
-      </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:14px;padding:7px 16px;border-top:1px solid var(--color-divider);font-size:11px;color:var(--color-neutral-400);min-height:34px">
-      <sc-if value="{{ hasSel }}" hint-placeholder-val="{{ false }}">
-        <span class="tag tag-accent" style="font-size:10px">{{ selTitle }}</span>
-        <span>region <b style="color:var(--color-neutral-200);font-weight:500">{{ selRegion }}</b></span>
-        <span>audio from bar <b style="color:var(--color-neutral-200);font-weight:500">{{ selFromBar }}</b></span>
-        <span>trig step <b class="mono" style="color:var(--color-accent-300);font-weight:500">{{ selTrig }}</b></span>
-        <span class="mono" style="color:var(--color-neutral-500)">{{ selSamples }}</span>
-        <button class="btn btn-ghost" style="font-size:11px;padding:2px 6px" onClick="{{ onAudition }}">Audition</button>
-      </sc-if>
-      <sc-if value="{{ noSel }}" hint-placeholder-val="{{ true }}"><span style="color:var(--color-neutral-600)">Select a slice to inspect it — double-click to audition.</span></sc-if>
-    </div>
-    </sc-if>
-
-    <sc-if value="{{ viewTable }}" hint-placeholder-val="{{ false }}">
-    <div style="flex:1;overflow:auto;padding:16px">
-      <div style="display:flex;flex-direction:column;min-width:min-content">
-        <sc-for list="{{ tableRows }}" as="row">
-          <div style="display:flex;border-bottom:1px solid color-mix(in srgb,var(--color-neutral-800) 45%,transparent)">
-            <div style="flex:none;width:130px;padding:6px 8px;font-size:10.5px;letter-spacing:.06em;color:var(--color-neutral-500);text-transform:uppercase">{{ row.label }}</div>
-            <sc-for list="{{ row.cells }}" as="c">
-              <div style="flex:none;width:158px;padding:6px 8px;border-left:1px solid color-mix(in srgb,var(--color-neutral-800) 45%,transparent);min-width:0">
-                <div class="mono" style="font-size:11px;color:{{ c.c1 }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.l1 }}</div>
-                <sc-if value="{{ c.hasL2 }}" hint-placeholder-val="{{ false }}"><div class="mono" style="font-size:9.5px;color:var(--color-neutral-500);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.l2 }}</div></sc-if>
-              </div>
-            </sc-for>
-          </div>
-        </sc-for>
-      </div>
-      <div style="margin-top:14px;display:flex;gap:10px"><button class="btn btn-secondary" style="font-size:12px" onClick="{{ onCsv }}">Export CSV</button><button class="btn btn-secondary" style="font-size:12px" onClick="{{ onPrint }}">Printable version</button></div>
-    </div>
-    </sc-if>
-  </div>
-  </sc-if>
-
-  <sc-if value="{{ isExport }}" hint-placeholder-val="{{ false }}">
-  <div style="flex:1;padding:26px 24px;max-width:1020px">
-    <h6 style="color:var(--color-neutral-500)">Export</h6>
-    <div style="display:flex;align-items:flex-end;gap:16px;margin:12px 0 18px">
-      <div class="field" style="width:220px"><label>Song abbreviation</label><input class="input" value="{{ abbrev }}" onChange="{{ onAbbrev }}" placeholder="e.g. Shake"></div>
-      <span style="font-size:11.5px;color:var(--color-neutral-500);padding-bottom:9px">files: <span class="mono">{{ namingPreview }}</span></span>
-    </div>
-    <sc-if value="{{ hasExportNotices }}" hint-placeholder-val="{{ false }}">
-      <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:14px">
-        <sc-for list="{{ exportNotices }}" as="n" hint-placeholder-count="1"><div style="font-size:11.5px;color:var(--color-accent-300)">◆ {{ n.text }}</div></sc-for>
-      </div>
-    </sc-if>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
-      <sc-for list="{{ fileCards }}" as="f" hint-placeholder-count="5">
-        <div class="card elev-sm">
-          <div style="display:flex;align-items:baseline;gap:8px"><span class="mono" style="font-size:12px;color:var(--color-accent-300)">{{ f.num }}</span><span class="card-title" style="font-size:15px">{{ f.stemName }}</span><span class="tag tag-neutral" style="font-size:10px;margin-left:auto">{{ f.sliceLabel }}</span></div>
-          <div class="mono" style="font-size:11px;color:var(--color-neutral-400)">{{ f.wavName }} <span style="color:var(--color-neutral-600)">· {{ f.size }}</span></div>
-          <div class="mono" style="font-size:11px;color:var(--color-neutral-400)">{{ f.otName }} <span style="color:var(--color-neutral-600)">· 832 B</span></div>
-          <div style="display:flex;gap:8px;margin-top:4px">
-            <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px" onClick="{{ f.onWav }}">WAV</button>
-            <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px" onClick="{{ f.onOt }}">.ot</button>
-          </div>
-        </div>
-      </sc-for>
-    </div>
-    <div style="display:flex;gap:12px;margin-top:20px;align-items:center">
-      <button class="btn btn-primary" onClick="{{ onZip }}" disabled="{{ zipBusy }}">{{ zipLabel }}</button>
-      <button class="btn btn-secondary" onClick="{{ onCsv }}">Pattern table CSV</button>
-      <button class="btn btn-secondary" onClick="{{ onPrint }}">Printable table</button>
-      <button class="btn btn-ghost" onClick="{{ goProject }}">Project builder →</button>
-      <span style="font-size:11.5px;color:var(--color-neutral-500);margin-left:auto">{{ exportSummary }}</span>
-    </div>
-  </div>
-  </sc-if>
-
-  <sc-if value="{{ isProject }}" hint-placeholder-val="{{ false }}">
-  <div style="flex:1;display:grid;grid-template-columns:minmax(320px,400px) 1fr;gap:18px;padding:26px 24px;align-content:start">
-    <div style="display:flex;flex-direction:column;gap:14px">
-      <h6 style="color:var(--color-neutral-500);margin:0">Project builder <span class="tag tag-outline" style="font-size:9px;margin-left:6px;white-space:nowrap">PHASE 2</span></h6>
-      <p style="font-size:12.5px;color:var(--color-neutral-400);margin:0">Drop your own default Octatrack project folder (saved from your unit). OSSC never touches it in place — it produces a copy with the stems inside the project folder, Static slots assigned, and the Bank 2+ patterns programmed: trigs, slice p-locks, per-track scales.</p>
-      <div onClick="{{ onPickProject }}" style="border:1px dashed var(--color-neutral-700);border-radius:var(--radius-md);padding:28px 20px;text-align:center;cursor:pointer;background:color-mix(in srgb,var(--color-surface) 55%,transparent)" style-hover="border-color:var(--color-accent-600)">
-        <div style="font-size:13px;color:var(--color-neutral-200);margin-bottom:4px">Select project folder</div>
-        <div style="font-size:11.5px;color:var(--color-neutral-500)">project.work + bank files from your CF card</div>
-      </div>
-      <input type="file" webkitdirectory="true" style="display:none" ref="{{ dirInputRef }}" onChange="{{ onProjectInput }}">
-      <div class="card" style="border:1px solid var(--color-accent-800)">
-        <div class="card-kicker">Scene preservation</div>
-        <div style="font-size:11.5px;color:var(--color-neutral-400);line-height:1.6">Scenes live in a bank's part data. OSSC writes only the pattern sections: byte offsets are verified against your own file's section markers before writing, and the part region is checked byte-identical afterwards — on any mismatch the bank is copied unchanged instead. Keep a backup and verify the first generated project on the device.</div>
-      </div>
-    </div>
-    <div style="min-width:0">
-      <sc-if value="{{ hasProject }}" hint-placeholder-val="{{ false }}">
-        <div style="display:flex;flex-direction:column;gap:10px">
-          <div style="display:flex;gap:24px;font-size:12px">
-            <div><div style="font-size:10px;letter-spacing:.1em;color:var(--color-neutral-600);text-transform:uppercase;margin-bottom:2px">Folder</div><span class="mono" style="color:var(--color-neutral-200)">{{ projFolder }}</span></div>
-            <div><div style="font-size:10px;letter-spacing:.1em;color:var(--color-neutral-600);text-transform:uppercase;margin-bottom:2px">OS version</div><span class="mono" style="color:var(--color-neutral-200)">{{ projOs }}</span></div>
-            <div><div style="font-size:10px;letter-spacing:.1em;color:var(--color-neutral-600);text-transform:uppercase;margin-bottom:2px">Files</div><span class="mono" style="color:var(--color-neutral-200)">{{ projFiles }}</span></div>
-            <div><div style="font-size:10px;letter-spacing:.1em;color:var(--color-neutral-600);text-transform:uppercase;margin-bottom:2px">Banks</div><span class="mono" style="color:var(--color-neutral-200)">{{ projBanks }}</span></div>
-          </div>
-          <sc-if value="{{ hasProjWarn }}" hint-placeholder-val="{{ false }}"><div style="font-size:11.5px;color:var(--color-accent-300)">◆ {{ projWarn }}</div></sc-if>
-          <h6 style="color:var(--color-neutral-500);margin:10px 0 2px">Write plan</h6>
-          <table class="table" style="max-width:720px">
-            <thead><tr><th>Target</th><th style="width:64px"></th><th>Change</th></tr></thead>
-            <tbody>
-              <sc-for list="{{ projPlan }}" as="p" hint-placeholder-count="4">
-                <tr><td class="mono" style="font-size:11.5px;color:var(--color-neutral-300)">{{ p.target }}</td><td><span class="tag {{ p.tagCls }}" style="font-size:9px">{{ p.tag }}</span></td><td style="font-size:12px;color:var(--color-neutral-400)">{{ p.change }}</td></tr>
-              </sc-for>
-            </tbody>
-          </table>
-          <div style="display:flex;gap:12px;align-items:center;margin-top:10px">
-            <button class="btn btn-primary" onClick="{{ onGenerateProject }}" disabled="{{ projBusy }}">{{ generateLabel }}</button>
-            <span style="font-size:11.5px;color:var(--color-neutral-500);max-width:420px">Bank format per community research (ot-tools-io); every offset re-verified against your own file before writing. One-time device step afterwards: STATIC machines on the used tracks with the matching slot as TRK DEFAULT — slices are already p-locked per trig.</span>
-          </div>
-          <sc-if value="{{ hasProjReport }}" hint-placeholder-val="{{ false }}">
-            <div class="card elev-sm" style="margin-top:14px;max-width:720px">
-              <div class="card-kicker">Generation report</div>
-              <sc-for list="{{ projReport }}" as="r" hint-placeholder-count="4">
-                <div style="font-size:12px;color:var(--color-neutral-300);display:flex;gap:8px"><span style="color:{{ r.c }}">{{ r.mark }}</span><span>{{ r.text }}</span></div>
-              </sc-for>
-              <div style="font-size:11px;color:var(--color-neutral-500);margin-top:4px">Copy the ZIP contents onto your CF card set: the project folder (audio included) goes beside your other projects. Keep a backup; verify the first load on the device.</div>
-            </div>
-          </sc-if>
-        </div>
-      </sc-if>
-      <sc-if value="{{ noProject }}" hint-placeholder-val="{{ true }}">
-        <div style="font-size:12px;color:var(--color-neutral-600);padding:24px 0">No project loaded. Everything on this screen stays in your browser.</div>
-      </sc-if>
-    </div>
-  </div>
-  </sc-if>
-</div>
-</x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;defaultThresholdDb&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:-60,&quot;min&quot;:-90,&quot;max&quot;:-30,&quot;step&quot;:1,&quot;unit&quot;:&quot;dBFS&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Analysis&quot;},&quot;waveStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;spectral&quot;,&quot;band&quot;,&quot;bars&quot;],&quot;default&quot;:&quot;spectral&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Timeline&quot;},&quot;showScopes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Timeline&quot;},&quot;compactLanes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Timeline&quot;}}">
-class Component extends DCLogic {
   state = {
     step: 'files', stems: [], midi: null, filesError: '', demoLoading: false,
     bpm: '', bpmSource: '', bpmError: '', abbrev: '', threshold: null, thDraft: null, bpmDraft: null,
@@ -416,10 +18,10 @@ class Component extends DCLogic {
     analysis: null, view: 'tl', ppm: 16, sel: null, playing: false, loopRegionIdx: null, waveStyle: 'spectral',
     startMeasure: 1, vol: 0.85, showWarn: false, zipBusy: false, project: null, projBusy: false, projReport: null,
   };
+  core = core;
   ids = 1; sources = []; buffers = {}; gains = {}; blobCache = {}; analysers = {}; meterEls = {}; scopeEls = {}; envs = {};
 
-  async componentDidMount() {
-    this.core = await import('./ossc-core.js');
+  componentDidMount() {
     if (this.state.threshold === null) this.setState({ threshold: this.props.defaultThresholdDb ?? -60, waveStyle: this.props.waveStyle ?? 'spectral', scopeMode: (this.props.showScopes ?? false) ? 'scope' : 'off' });
     this.meterRaf = requestAnimationFrame(this.meterTick);
     this.keyH = (e) => {
@@ -428,6 +30,7 @@ class Component extends DCLogic {
     window.addEventListener('keydown', this.keyH);
   }
   componentWillUnmount() { window.removeEventListener('keydown', this.keyH); cancelAnimationFrame(this.meterRaf); this.stop(); }
+
   // ---------- meters & scopes ----------
   analyserFor(id) { const ctx = this.ctx(); if (!this.analysers[id]) { const an = ctx.createAnalyser(); an.fftSize = 1024; this.analysers[id] = an; } return this.analysers[id]; }
   meterTick = () => {
@@ -509,16 +112,15 @@ class Component extends DCLogic {
         this.setState({ reading: f.name });
         await new Promise(r => setTimeout(r, 25));
         const buf = await f.arrayBuffer();
-        if (/\.(mid|midi)$/i.test(f.name)) midi = this.core.parseMidi(buf, f.name);
+        if (/\.(mid|midi)$/i.test(f.name)) midi = core.parseMidi(buf, f.name);
         else if (/\.wav$/i.test(f.name)) {
-          const p = this.core.parseWav(buf, f.name);
-          st.push({ id: this.ids++, name: f.name.replace(/\.wav$/i, '').replace(/[_-]?\d+$/,'').toUpperCase().slice(0, 20) || 'STEM', muted: false, solo: false, ...p });
+          const p = core.parseWav(buf, f.name);
+          st.push({ id: this.ids++, name: f.name.replace(/\.wav$/i, '').replace(/[_-]?\d+$/, '').toUpperCase().slice(0, 20) || 'STEM', muted: false, solo: false, ...p });
         } else errs.push(f.name + ': unsupported type (need .wav or .mid)');
       } catch (err) { errs.push(err.message); }
     }
     let bpm = this.state.bpm, bpmSource = this.state.bpmSource;
     if (midi && !bpm) {
-      const m = midi.fileName.match(/(\d{2,3})(?:\D|$)/g);
       const cand = (midi.fileName.match(/\d{2,3}(?:\.\d+)?/g) || []).map(Number).find(n => n >= 50 && n <= 250);
       if (cand) { bpm = String(cand); bpmSource = 'detected from file name “' + midi.fileName + '” — confirm before processing'; }
       else if (midi.bpm) { bpm = String(midi.bpm); bpmSource = 'from MIDI tempo event — confirm before processing'; }
@@ -537,7 +139,7 @@ class Component extends DCLogic {
   onLoadDemo = (id) => {
     this.setState({ demoLoading: true });
     setTimeout(async () => {
-      const demo = this.core.makeDemo(id);
+      const demo = core.makeDemo(id);
       this.demoNames = demo.regionNames;
       const files = demo.files.map(f => ({ name: f.name, arrayBuffer: () => Promise.resolve(f.data) }));
       files.push({ name: demo.midi.name, arrayBuffer: () => Promise.resolve(demo.midi.data) });
@@ -567,59 +169,59 @@ class Component extends DCLogic {
   confirmTempo = () => {
     const bpm = parseFloat(this.state.bpm);
     if (!(bpm >= 30 && bpm <= 300)) { this.setState({ bpmError: 'BPM must be between 30 and 300.' }); return; }
-    const r = this.core.regionsFromTicks(this.state.midi.ticks, this.state.midi.ppq);
+    const r = core.regionsFromTicks(this.state.midi.ticks, this.state.midi.ppq);
     if (r.error) { this.setState({ bpmError: r.error }); return; }
     if (this.demoNames) r.regions.forEach((rg, i) => rg.name = this.demoNames[i] || '');
     this.setState({ bpmError: '', regions: r.regions, regionsMeta: { snapped: r.snapped, totalMeasures: r.totalMeasures }, analysis: null, step: 'regions' });
   };
   analyze = async () => {
-    const c = this.core, bpm = parseFloat(this.state.bpm), { stems, regions, threshold } = this.state;
+    const bpm = parseFloat(this.state.bpm), { stems, regions, threshold } = this.state;
     this.setState({ analyzing: true, progress: 'Computing measure grid…' });
     await new Promise(r => setTimeout(r, 20));
     let total = this.state.regionsMeta.totalMeasures;
     const warnings = [];
-    let bounds = c.boundariesFor(bpm, total);
+    let bounds = core.boundariesFor(bpm, total);
     const frames = stems[0].frames;
     if (bounds[total] > frames) {
       let n = total; while (n > 0 && bounds[n] > frames) n--;
       warnings.push('MIDI song end (bar ' + (total + 1) + ') lies beyond the audio — analysis clamped to bar ' + (n + 1) + '. Check the BPM.');
-      total = n; bounds = c.boundariesFor(bpm, total);
-    } else if (frames - bounds[total] > c.spmFor(bpm)) {
-      warnings.push('Audio continues ' + Math.floor((frames - bounds[total]) / c.spmFor(bpm)) + ' bars past the MIDI song end — the excess is ignored.');
+      total = n; bounds = core.boundariesFor(bpm, total);
+    } else if (frames - bounds[total] > core.spmFor(bpm)) {
+      warnings.push('Audio continues ' + Math.floor((frames - bounds[total]) / core.spmFor(bpm)) + ' bars past the MIDI song end — the excess is ignored.');
     }
-    const regs = regions.filter(r => r.start < total).map(r => r.end > total ? { ...r, end: total, len: total - r.start, scale: c.scaleFor(total - r.start) } : r);
-    const thLin = c.dbToLin(threshold), stemData = [];
+    const regs = regions.filter(r => r.start < total).map(r => r.end > total ? { ...r, end: total, len: total - r.start, scale: core.scaleFor(total - r.start) } : r);
+    const thLin = core.dbToLin(threshold), stemData = [];
     for (let si = 0; si < stems.length; si++) {
       const s = stems[si];
       this.setState({ progress: 'Analyzing ' + s.name + ' (' + (si + 1) + '/' + stems.length + ')…' });
       await new Promise(r => setTimeout(r, 20));
-      const peaks = c.measurePeaks(s.chL, s.chR, bounds);
+      const peaks = core.measurePeaks(s.chL, s.chR, bounds);
       stemData.push({ id: s.id, peaks });
     }
     this.buildSlices(stemData, regs, bounds, thLin, warnings);
     if (regs.some(r => !r.scale.ok)) warnings.push('Regions over 32 bars cannot be represented as a single pattern — split them in the arrangement MIDI.');
     if ((this.state.regionsMeta.snapped || 0) > 0) warnings.push(this.state.regionsMeta.snapped + ' MIDI note(s) were not exactly on a bar line — snapped to the nearest measure.');
-    if (regs.length > 32) warnings.push(regs.length + ' regions — patterns roll on past Bank 3 (' + c.bankPattern(regs.length).bp + ' last).');
+    if (regs.length > 32) warnings.push(regs.length + ' regions — patterns roll on past Bank 3 (' + core.bankPattern(regs.length).bp + ' last).');
     const fitPpm = Math.max(5, Math.min(30, Math.floor((window.innerWidth - 200) / total)));
     this.setState({ analyzing: false, analysis: { bounds, total, regs, stemData, warnings, v: Date.now() }, step: 'results', ppm: fitPpm, sel: null, startMeasure: 1, loopRegionIdx: null });
     this.blobCache = {}; this.buffers = {};
   };
   buildSlices(stemData, regs, bounds, thLin, warnings) {
-    const c = this.core, { stems } = this.state;
-    stemData.forEach((sd, si) => {
+    const { stems } = this.state;
+    stemData.forEach((sd) => {
       const s = stems.find(x => x.id === sd.id), slices = [];
       for (const r of regs) {
-        const t = c.trimRegion(sd.peaks, r.start, r.end, thLin);
+        const t = core.trimRegion(sd.peaks, r.start, r.end, thLin);
         if (!t) continue;
         const start = bounds[t.a], end = bounds[t.b + 1];
-        slices.push({ region: r, aM: t.a, bM: t.b, start, end, frames: end - start, trig: c.trigStep(t.a - r.start, r.scale.steps) });
+        slices.push({ region: r, aM: t.a, bM: t.b, start, end, frames: end - start, trig: core.trigStep(t.a - r.start, r.scale.steps) });
       }
       let out = 0;
       slices.forEach((sl, i) => {
         sl.num = i + 1; sl.outStart = out; out += sl.frames; sl.outEnd = out;
         const buckets = Math.min(560, Math.max(32, (sl.bM - sl.aM + 1) * 16));
         sl.vb = '0 0 ' + buckets + ' 32';
-        sl.bands = c.waveBands(s.chL, s.chR, sl.start, sl.end, buckets);
+        sl.bands = core.waveBands(s.chL, s.chR, sl.start, sl.end, buckets);
         sl._pc = {};
       });
       sd.slices = slices; sd.totalFrames = out;
@@ -630,7 +232,7 @@ class Component extends DCLogic {
   reapplyThreshold = (th) => {
     const a = this.state.analysis; if (!a) return;
     const warnings = a.warnings.filter(w => !/silent at this threshold|exceeds the Octatrack limit/.test(w));
-    this.buildSlices(a.stemData, a.regs, a.bounds, this.core.dbToLin(th), warnings);
+    this.buildSlices(a.stemData, a.regs, a.bounds, core.dbToLin(th), warnings);
     this.blobCache = {};
     this.setState({ analysis: { ...a, warnings, v: Date.now() }, sel: null });
   };
@@ -693,7 +295,7 @@ class Component extends DCLogic {
       }
     }
     this.setState({ playing: true });
-    const spm = this.core.spmFor(parseFloat(this.state.bpm)), endS = a.bounds[a.total];
+    const spm = core.spmFor(parseFloat(this.state.bpm)), endS = a.bounds[a.total];
     const tick = () => {
       if (!this.state.playing) return;
       const el = Math.max(0, this.ctx().currentTime - this.t0);
@@ -770,7 +372,7 @@ class Component extends DCLogic {
   }
   printTable = () => { if (this.state.analysis) window.open(URL.createObjectURL(new Blob([this.sheetHtml(false)], { type: 'text/html' })), '_blank'); };
   generateProject = async () => {
-    const S = this.state, a = S.analysis, c = this.core, p = S.project;
+    const S = this.state, a = S.analysis, p = S.project;
     if (!a || !p || !p.fileList) return;
     this.setState({ projBusy: true, projReport: null });
     await new Promise(r => setTimeout(r, 20));
@@ -782,7 +384,7 @@ class Component extends DCLogic {
         if (!sd || !sd.slices.length) { rep.push({ warn: 1, text: stem.name + ' is silent — Static slot ' + (i + 1) + ' left empty' }); return; }
         const base = this.fileBase(stem, i);
         entries.push({ name: folder + '/' + base + '.wav', data: this.stemWavBytes(sd, stem) });
-        entries.push({ name: folder + '/' + base + '.ot', data: c.writeOt(parseFloat(S.bpm), sd.totalFrames, sd.slices.map(s => ({ start: s.outStart, end: s.outEnd }))) });
+        entries.push({ name: folder + '/' + base + '.ot', data: core.writeOt(parseFloat(S.bpm), sd.totalFrames, sd.slices.map(s => ({ start: s.outStart, end: s.outEnd }))) });
         slotEntries.push({ slot: i + 1, path: base + '.wav', bpm: parseFloat(S.bpm) });
         if (i < 128) markerEntries.push({ slot0: i, totalFrames: sd.totalFrames, slices: sd.slices.slice(0, 64).map(s => ({ start: s.outStart, end: s.outEnd })) });
       });
@@ -806,16 +408,15 @@ class Component extends DCLogic {
         const buf = new Uint8Array(await f.arrayBuffer());
         const bm = rel.match(/^bank(\d+)\.work$/i);
         if (/^project\.work$/i.test(rel)) {
-          const res = c.writeStaticSlots(c.decodeLatin1(buf), slotEntries, parseFloat(S.bpm));
+          const res = core.writeStaticSlots(core.decodeLatin1(buf), slotEntries, parseFloat(S.bpm));
           if (res.error) { rep.push({ warn: 1, text: res.error + ' — project.work copied unchanged' }); entries.push({ name: folder + '/' + rel, data: buf }); }
           else {
             if (res.removed) rep.push({ warn: 1, text: res.removed + ' existing Static assignment(s) in slots 1–' + slotEntries.length + ' replaced' });
-            if (!res.tempoSet) rep.push({ warn: 1, text: 'project tempo (TEMPOx24) not found in project.work — set the device tempo to ' + parseFloat(S.bpm) + ' BPM manually or slices will drift against the patterns' });
-            entries.push({ name: folder + '/' + rel, data: c.encodeLatin1(res.text) }); slotsOk = true;
+            entries.push({ name: folder + '/' + rel, data: core.encodeLatin1(res.text) }); slotsOk = true;
           }
         } else if (/^markers\.work$/i.test(rel)) {
           sawMarkers = true;
-          const res = c.writeMarkersSlots(buf, markerEntries);
+          const res = core.writeMarkersSlots(buf, markerEntries);
           if (res.error) {
             rep.push({ warn: 1, text: 'markers.work: ' + res.error + ' — copied unchanged; slices won\'t appear until each slot\'s sample is reloaded once on the device (the .ot beside each WAV carries them)' });
             entries.push({ name: folder + '/' + rel, data: buf });
@@ -824,7 +425,7 @@ class Component extends DCLogic {
             rep.push({ text: 'markers.work: trim + 64-slice grid written for ' + res.slotsWritten + ' Static slots, checksum updated — slices appear on the device immediately' });
           }
         } else if (bm && bankJobs[parseInt(bm[1], 10)]) {
-          const res = c.writeBankPatterns(buf, bankJobs[parseInt(bm[1], 10)], parseFloat(S.bpm));
+          const res = core.writeBankPatterns(buf, bankJobs[parseInt(bm[1], 10)], parseFloat(S.bpm));
           if (res.error) {
             rep.push({ warn: 1, text: rel + ': ' + res.error + ' — copied unchanged; program its patterns from the sheet' });
             entries.push({ name: folder + '/' + rel, data: buf });
@@ -849,23 +450,23 @@ class Component extends DCLogic {
       entries.push({ name: 'PATTERNS.html', data: new TextEncoder().encode(this.sheetHtml(true)) });
       rep.unshift({ text: 'PATTERNS.html reference sheet added (verification aid + manual fallback)' });
       rep.unshift({ text: (banksWritten ? banksWritten + ' bank(s) pattern-programmed with ' + trigsTotal + ' trigs; ' : '') + 'all other bank files copied byte-identical — parts and scenes untouched in every bank' });
-      if (slotsOk) rep.unshift({ text: slotEntries.length + ' Static sample slots written into project.work (timestretch off, ' + parseFloat(S.bpm) + ' BPM, trig quantize direct) · project tempo set to ' + parseFloat(S.bpm) + ' BPM' });
+      if (slotsOk) rep.unshift({ text: slotEntries.length + ' Static sample slots written into project.work (timestretch off, ' + parseFloat(S.bpm) + ' BPM, trig quantize direct)' });
       rep.unshift({ text: slotEntries.length * 2 + ' audio + .ot files added inside the project folder (no set-level AUDIO pool)' });
-      this.download(folder + '.zip', c.makeZip(entries));
+      this.download(folder + '.zip', core.makeZip(entries));
       this.setState({ projBusy: false, projReport: rep });
     } catch (err) { this.setState({ projBusy: false, projReport: [{ warn: 1, text: 'Generation failed: ' + err.message }] }); }
   };
   stemWavBytes(sd, stem) {
     const bpf = stem.bytesPerFrame, out = new Uint8Array(sd.totalFrames * bpf); let o = 0;
     for (const sl of sd.slices) { out.set(stem.pcm.subarray(sl.start * bpf, sl.end * bpf), o); o += sl.frames * bpf; }
-    return this.core.encodeWav(out, stem.bits);
+    return core.encodeWav(out, stem.bits);
   }
   buildWav(sd, stem) {
     const key = 'w' + stem.id + this.state.analysis.v;
     if (!this.blobCache[key]) this.blobCache[key] = new Blob([this.stemWavBytes(sd, stem)], { type: 'audio/wav' });
     return this.blobCache[key];
   }
-  buildOt(sd) { return new Blob([this.core.writeOt(parseFloat(this.state.bpm), sd.totalFrames, sd.slices.map(s => ({ start: s.outStart, end: s.outEnd })))], { type: 'application/octet-stream' }); }
+  buildOt(sd) { return new Blob([core.writeOt(parseFloat(this.state.bpm), sd.totalFrames, sd.slices.map(s => ({ start: s.outStart, end: s.outEnd })))], { type: 'application/octet-stream' }); }
   exportZip = async () => {
     this.setState({ zipBusy: true }); await new Promise(r => setTimeout(r, 20));
     const a = this.state.analysis, entries = [];
@@ -873,9 +474,9 @@ class Component extends DCLogic {
       const sd = a.stemData.find(x => x.id === stem.id); if (!sd || !sd.slices.length) return;
       const base = this.fileBase(stem, i);
       entries.push({ name: base + '.wav', data: this.stemWavBytes(sd, stem) });
-      entries.push({ name: base + '.ot', data: this.core.writeOt(parseFloat(this.state.bpm), sd.totalFrames, sd.slices.map(s => ({ start: s.outStart, end: s.outEnd }))) });
+      entries.push({ name: base + '.ot', data: core.writeOt(parseFloat(this.state.bpm), sd.totalFrames, sd.slices.map(s => ({ start: s.outStart, end: s.outEnd }))) });
     });
-    this.download(((this.state.abbrev || 'OSSC').trim()) + ' stems.zip', this.core.makeZip(entries));
+    this.download(((this.state.abbrev || 'OSSC').trim()) + ' stems.zip', core.makeZip(entries));
     this.setState({ zipBusy: false });
   };
   exportCsv = () => {
@@ -892,10 +493,10 @@ class Component extends DCLogic {
         return sl ? 'Slice ' + sl.num + (sl.trig !== 1 ? ' · song bar ' + (sl.aM + 1) + ' = pattern bar ' + (sl.aM - r.start + 1) + ' · trig step ' + sl.trig : '') : '';
       })]);
     }
-    this.download(((this.state.abbrev || 'OSSC').trim()) + ' patterns.csv', new Blob([this.core.toCsv(rows)], { type: 'text/csv' }));
+    this.download(((this.state.abbrev || 'OSSC').trim()) + ' patterns.csv', new Blob([core.toCsv(rows)], { type: 'text/csv' }));
   };
 
-  // ---------- project (phase 2 preview) ----------
+  // ---------- project (phase 2) ----------
   onProjectInput = async (e) => {
     const files = [...e.target.files];
     if (!files.length) return;
@@ -904,7 +505,7 @@ class Component extends DCLogic {
     const pw = files.find(f => /^project\.work$/i.test(f.name));
     let os = 'not found', warn = '';
     if (pw) {
-      const pi = this.core.parseProjectText(this.core.decodeLatin1(new Uint8Array(await pw.arrayBuffer())));
+      const pi = core.parseProjectText(core.decodeLatin1(new Uint8Array(await pw.arrayBuffer())));
       os = pi.osVersion || 'unreadable';
       if (!/OCTATRACK/i.test(pi.projType)) warn = 'project.work does not look like an Octatrack project file — generation may produce an unusable copy.';
       else if (!/^1\.40[ABC]$/.test(os)) warn = 'Project OS ' + os + ' — slot writing verified for OS 1.40 A/B/C only; verify on device.';
@@ -912,10 +513,10 @@ class Component extends DCLogic {
     this.setState({ project: { folder, files: files.length, banks, os, warn, fileList: files }, projReport: null });
   };
 
-  // ---------- render ----------
-  renderVals() {
-    const S = this.state, c = this.core, set = (p) => this.setState(p);
-    const bpm = parseFloat(S.bpm) || 0, spm = bpm ? c.spmFor(bpm) : 0;
+  // ---------- view model ----------
+  buildVals() {
+    const S = this.state, set = (p) => this.setState(p);
+    const bpm = parseFloat(S.bpm) || 0, spm = bpm ? core.spmFor(bpm) : 0;
     const steps = [['files', '1 Files', true], ['tempo', '2 Tempo', S.stems.length && S.midi], ['regions', '3 Regions', S.regions], ['results', '4 Results', S.analysis], ['export', '5 Export', S.analysis], ['project', '6 Project', S.analysis]];
     const vals = {
       metaLabel: S.abbrev || S.midi ? [(S.abbrev || '').trim(), S.stems.length ? S.stems.length + ' stems' : '', bpm ? bpm + ' BPM' : ''].filter(Boolean).join(' · ') : '',
@@ -930,7 +531,7 @@ class Component extends DCLogic {
     vals.onFileInput = e => { this.handleFiles([...e.target.files]); e.target.value = ''; };
     vals.demoLoading = S.demoLoading;
     vals.demoLead = S.demoLoading ? 'Synthesizing demo song…' : 'No files handy? Load a demo:';
-    vals.demosVm = (this.core ? this.core.DEMO_LIST : []).map(d => ({ label: d.label + ' · ' + d.bpm, onClick: () => this.onLoadDemo(d.id) }));
+    vals.demosVm = core.DEMO_LIST.map(d => ({ label: d.label + ' · ' + d.bpm, onClick: () => this.onLoadDemo(d.id) }));
     vals.isReading = !!S.reading; vals.readingLabel = 'Reading ' + (S.reading || '') + '…';
 
     vals.hasFilesError = !!S.filesError; vals.filesError = S.filesError;
@@ -1078,7 +679,7 @@ class Component extends DCLogic {
           slices: (sd ? sd.slices : []).map(sl => {
             const key = stem.id + ':' + sl.num, isSel = key === selKey;
             const wst = S.waveStyle;
-            if (!sl._pc[wst]) sl._pc[wst] = this.core.wavePaths(sl.bands, wst, 32);
+            if (!sl._pc[wst]) sl._pc[wst] = core.wavePaths(sl.bands, wst, 32);
             const P = sl._pc[wst];
             const F = wst === 'band' ? ['var(--color-accent-500)', 'none', 'none', 0.92]
               : wst === 'bars' ? ['var(--color-accent-500)', 'none', 'var(--color-neutral-100)', 1]
@@ -1179,7 +780,19 @@ class Component extends DCLogic {
     }
     return vals;
   }
+
+  render() {
+    const vals = this.buildVals();
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <Header vals={vals} />
+        {vals.isFiles && <FilesStep vals={vals} />}
+        {vals.isTempo && <TempoStep vals={vals} />}
+        {vals.isRegions && <RegionsStep vals={vals} />}
+        {vals.isResults && <ResultsStep vals={vals} />}
+        {vals.isExport && <ExportStep vals={vals} />}
+        {vals.isProject && <ProjectStep vals={vals} />}
+      </div>
+    );
+  }
 }
-</script>
-</body>
-</html>
