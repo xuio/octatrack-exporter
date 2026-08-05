@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildStemSlices, trimLimits, normalizeProject, boundariesFor, scaleFor, makeZip, readZip, audioEntries, bucketsPerBarFor, barBands, meterPos, dbPos } from '../src/lib/index.js';
+import { buildStemSlices, trimLimits, splitTrim, normalizeProject, boundariesFor, scaleFor, makeZip, readZip, audioEntries, bucketsPerBarFor, barBands, meterPos, dbPos } from '../src/lib/index.js';
 
 const BPM = 111;
 // two regions: bars 0-8 (9 bars, 1/4x) and bars 9-12 (4 bars, 1x)
@@ -38,33 +38,48 @@ test('manual trim overrides the threshold result', () => {
   assert.equal(slices[0].edited, true);
 });
 
-test('a slice can expand into the next section; its trig follows to that pattern', () => {
-  // region 2's slice is dragged back to start at bar 7, inside region 1
-  const { slices } = buildStemSlices(peaks, regs, bounds, TH, { 1: { del: true }, 2: { a: 7, b: 12 } });
-  const s = slices.find(x => x.region.idx === 2);
-  assert.deepEqual([s.aM, s.bM], [7, 12]);
-  assert.equal(s.trigRegionIdx, 1, 'starts inside region 1, so it trigs from that pattern');
-  assert.equal(s.movedTrig, true);
-  assert.equal(s.trig, 29);                          // bar 8 of region 1 → (7-0)*4+1
-  // and expanding forward past the song end is clamped
-  const past = buildStemSlices(peaks, regs, bounds, TH, { 2: { a: 9, b: 99 } });
-  assert.equal(past.slices.find(x => x.region.idx === 2).bM, 12);
+test('every slice stays inside its own section and trigs from its own pattern', () => {
+  const { slices } = buildStemSlices(peaks, regs, bounds, TH, { 1: { a: 4, b: 20 } });
+  const s = slices.find(x => x.region.idx === 1);
+  assert.equal(s.bM, 8, 'clipped to the last bar of its own section');
+  assert.equal(s.trigRegionIdx, 1);
+  assert.equal(s.movedTrig, false);
 });
 
-test('slices never overlap: an expanded slice pushes back the one before it', () => {
-  const { slices } = buildStemSlices(peaks, regs, bounds, TH, { 2: { a: 6, b: 12 } });
-  const first = slices.find(x => x.region.idx === 1), second = slices.find(x => x.region.idx === 2);
-  assert.ok(first.bM < second.aM, 'no overlap in the chain');
-  assert.equal(first.bM, 5);
-  // chain offsets stay contiguous
-  assert.equal(second.outStart, first.outEnd);
+test('expanding across a boundary produces a separate slice in the next section', () => {
+  // drag region 1's end (bar 7) three bars right, into region 2
+  const patch = splitTrim(regs, 1, 4, 10, [{ regionIdx: 1, aM: 4, bM: 7 }, { regionIdx: 2, aM: 9, bM: 12 }]);
+  assert.deepEqual(patch[1], { a: 4, b: 8 }, 'home section keeps only what is inside it');
+  assert.deepEqual(patch[2], { a: 9, b: 12 }, 'neighbour grows to cover the spill');
+  // with no slice in the neighbour yet, the spill becomes its own new slice
+  const fresh = splitTrim(regs, 1, 4, 10, [{ regionIdx: 1, aM: 4, bM: 7 }]);
+  assert.deepEqual(fresh[2], { a: 9, b: 10 });
+  const built = buildStemSlices(peaks, regs, bounds, TH, { 1: fresh[1], 2: fresh[2] });
+  assert.equal(built.slices.length, 2);
+  assert.deepEqual(built.slices.map(s => [s.region.idx, s.aM, s.bM]), [[1, 4, 8], [2, 9, 10]]);
+  assert.equal(built.slices[1].trig, 1, 'the new slice trigs at step 1 of its own pattern');
+  assert.equal(built.slices[1].outStart, built.slices[0].outEnd, 'chain stays contiguous');
 });
 
-test('trimLimits reports how far each edge may travel', () => {
+test('a drag pulled entirely out of its own section leaves nothing behind there', () => {
+  const patch = splitTrim(regs, 1, 9, 12, [{ regionIdx: 1, aM: 4, bM: 7 }]);
+  assert.equal(patch[1], null);
+  assert.deepEqual(patch[2], { a: 9, b: 12 });
+});
+
+test('splitTrim is idempotent against the pre-drag layout', () => {
+  const base = [{ regionIdx: 1, aM: 4, bM: 7 }];
+  const out = splitTrim(regs, 1, 4, 11, base);
+  const again = splitTrim(regs, 1, 4, 10, base);      // dragging back one bar
+  assert.deepEqual(again[2], { a: 9, b: 10 }, 'does not accumulate from the previous move');
+  assert.deepEqual(out[2], { a: 9, b: 11 });
+});
+
+test('trimLimits spans the whole song — boundaries split instead of blocking', () => {
   const { slices } = buildStemSlices(peaks, regs, bounds, TH);
   const lim = trimLimits(slices, 2, regs);
-  assert.equal(lim.minA, slices[0].bM + 1);   // cannot run into the previous slice
-  assert.equal(lim.maxB, 12);                 // last bar of the song
+  assert.equal(lim.minA, 0);
+  assert.equal(lim.maxB, 12);
 });
 
 test('normalizeProject finds the project root in a folder or a zip', () => {

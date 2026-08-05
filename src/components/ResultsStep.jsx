@@ -46,8 +46,16 @@ function Transport({ vals }) {
       <span className="mono" ref={vals.posRef} style={{ fontSize: 14, letterSpacing: '.08em', color: 'var(--color-accent-300)', border: '1px solid var(--color-neutral-800)', borderRadius: 4, padding: '2px 10px', background: 'var(--color-surface)', minWidth: 74, textAlign: 'center' }}>{vals.posLabel}</span>
       <button className={'tb ' + vals.followCls} onClick={vals.onToggleFollow} title="Keep the view following the playhead">Follow</button>
       <span style={{ display: 'inline-flex', gap: 3 }}>
-        <button className="tb" onClick={vals.onUndo} disabled={!vals.canUndo} title="Undo slice edit (⌘Z)">↶</button>
-        <button className="tb" onClick={vals.onRedo} disabled={!vals.canRedo} title="Redo slice edit (⇧⌘Z)">↷</button>
+        <button className="tb" onClick={vals.onUndo} disabled={!vals.canUndo} title="Undo slice edit (⌘Z)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3.5 9h11.5a5 5 0 0 1 0 10H9" /><polyline points="7.5 4.5 3 9 7.5 13.5" />
+          </svg>
+        </button>
+        <button className="tb" onClick={vals.onRedo} disabled={!vals.canRedo} title="Redo slice edit (⇧⌘Z)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20.5 9H9a5 5 0 0 0 0 10h6" /><polyline points="16.5 4.5 21 9 16.5 13.5" />
+          </svg>
+        </button>
       </span>
       {vals.hasLoop && (
         <button className="tag tag-accent" style={{ fontSize: 10, border: 'none', cursor: 'pointer' }} onClick={vals.onClearLoop} title="Release the loop and keep playing from here">⟳ looping {vals.loopLabel} ✕</button>
@@ -210,7 +218,7 @@ function Timeline({ vals }) {
             <span className="tag tag-accent" style={{ fontSize: 10 }}>{vals.selTitle}</span>
             <span>region <b style={{ color: 'var(--color-neutral-200)', fontWeight: 500 }}>{vals.selRegion}</b></span>
             <span>song bar <b style={{ color: 'var(--color-neutral-200)', fontWeight: 500 }}>{vals.selFromBar}</b> = pattern bar <b style={{ color: 'var(--color-neutral-200)', fontWeight: 500 }}>{vals.selPatternBar}</b></span>
-            <span>trig step <b className="mono" style={{ color: 'var(--color-accent-300)', fontWeight: 500 }}>{vals.selTrig}</b>{vals.selMovedTrig && <span className="tag tag-outline" style={{ fontSize: 9, marginLeft: 5 }}>trigs from {vals.selTrigPattern}</span>}</span>
+            <span>trig step <b className="mono" style={{ color: 'var(--color-accent-300)', fontWeight: 500 }}>{vals.selTrig}</b> in {vals.selTrigPattern}</span>
             <span className="mono" style={{ color: 'var(--color-neutral-500)' }}>{vals.selSamples}</span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
               <span style={{ fontSize: 10, color: 'var(--color-neutral-500)' }}>START</span>

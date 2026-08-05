@@ -47,7 +47,16 @@ test('the exported slice chain is a byte-exact copy of the source samples', () =
 
 test('every gain the device reads is unity', () => {
   const ot = writeOt(120, 44100, [{ start: 0, end: 44100 }]);
-  assert.equal(new DataView(ot.buffer).getUint16(43), 48, '.ot gain must be 48 = 0 dB');
+  // .ot layout: header[21] + version + unknown + tempo u32 + trim_bar_len u32
+  // + loop_bar_len u32 + stretch u32 + loop_mode u32 → gain is a u16 at 43.
+  // Pinned byte-wise because a wrong width here shifts the gain by one byte and
+  // would silently export at −24 dB.
+  const dv = new DataView(ot.buffer);
+  assert.equal(dv.getUint16(43), 48, '.ot gain must be 48 = +0.0 dB');
+  assert.equal(ot[43], 0, 'gain high byte');
+  assert.equal(ot[44], 48, 'gain low byte');
+  assert.equal(ot[45], 0xFF, 'quantization byte must follow the u16 gain');
+  assert.equal(dv.getUint32(35), 0, 'timestretch off — the device must not resample');
   const text = '[META]\r\nTYPE=OCTATRACK DPS-1 PROJECT\r\n[/META]\r\n\r\n[SETTINGS]\r\nTEMPOx24=2880\r\n[/SETTINGS]\r\n\r\n############################\r\n\r\n';
   const res = writeStaticSlots(text, [{ slot: 1, path: 'a.wav', bpm: 120 }], 120);
   assert.match(res.text, /GAIN=48/, 'slot gain must be 48 = 0 dB (72 is the recorder default = +12 dB)');

@@ -7,7 +7,7 @@
 - 0x1F u32 loopLen = same
 - 0x23 u32 stretch = 0 (off)
 - 0x27 u32 loop = 0 (off)
-- 0x2B u16 gain = 48 (0 dB; range 0..96 = -24..+24)
+- 0x2B u16 gain = 48 (+0.0 dB; range 0..96 = -24..+24). Width matters: the field is a u16 (ot-tools-io SampleSettingsFile), so writing it as a u8 would push 0 into the gain byte = -24 dB. Quantization (u8) must follow immediately at 0x2D.
 - 0x2D u8 quantize = 0xFF direct (0=pattern len, 1..16 = 1..256 steps)
 - 0x2E u32 trimStart = 0
 - 0x32 u32 trimEnd = total frames

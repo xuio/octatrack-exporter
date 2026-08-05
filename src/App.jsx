@@ -454,12 +454,27 @@ export default class App extends React.Component {
   editCount() { return Object.values(this.state.edits).reduce((n, m) => n + Object.keys(m).length, 0); }
   deleteSelected = () => { const s = this.state.sel; if (s) this.setEdit(s.stemId, s.regionIdx, { del: true, a: null, b: null }); };
   resetEdits = () => this.applyEdits({});
+  // A trim that reaches into other sections is split across them, so the drag is
+  // always recomputed from the pre-drag layout rather than from the running one.
+  applyTrim(stemId, regionIdx, a, b, opts = {}) {
+    const A = this.state.analysis; if (!A) return;
+    const sd = A.stemData.find(x => x.id === stemId); if (!sd) return;
+    const base = opts.base || sd.slices.map(s => ({ regionIdx: s.region.idx, aM: s.aM, bM: s.bM }));
+    const patch = core.splitTrim(A.regs, regionIdx, a, b, base);
+    const forStem = { ...((opts.baseEdits || this.state.edits)[stemId] || {}) };
+    for (const [idx, span] of Object.entries(patch)) {
+      if (span === null) delete forStem[idx];
+      else forStem[idx] = { a: span.a, b: span.b };
+    }
+    this.applyEdits({ ...(opts.baseEdits || this.state.edits), [stemId]: forStem }, opts.record !== false);
+  }
   startTrim = (stemId, regionIdx, side, e) => {
     e.stopPropagation(); e.preventDefault();
     const a = this.state.analysis, sd = a.stemData.find(x => x.id === stemId);
     const sl = sd && sd.slices.find(x => x.region.idx === regionIdx); if (!sl) return;
-    // one history entry per drag, not per pixel
-    const before = this.state.edits;
+    // one history entry per drag, and a fixed baseline so the drag is idempotent
+    const beforeEdits = this.state.edits;
+    const base = sd.slices.map(s => ({ regionIdx: s.region.idx, aM: s.aM, bM: s.bM }));
     const lim = core.trimLimits(sd.slices, regionIdx, a.regs);
     const st = { x0: e.clientX, a0: sl.aM, b0: sl.bM };
     let lastA = sl.aM, lastB = sl.bM;
@@ -468,11 +483,14 @@ export default class App extends React.Component {
       let a2 = st.a0, b2 = st.b0;
       if (side === 'l') a2 = Math.max(lim.minA, Math.min(st.b0, st.a0 + d));
       else b2 = Math.min(lim.maxB, Math.max(st.a0, st.b0 + d));
-      if (a2 !== lastA || b2 !== lastB) { lastA = a2; lastB = b2; this.setEdit(stemId, regionIdx, { a: a2, b: b2, del: null }, false); }
+      if (a2 !== lastA || b2 !== lastB) {
+        lastA = a2; lastB = b2;
+        this.applyTrim(stemId, regionIdx, a2, b2, { record: false, base, baseEdits: beforeEdits });
+      }
     };
     const up = () => {
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
-      if (lastA !== st.a0 || lastB !== st.b0) this.setState(s => ({ past: [...s.past, before].slice(-200), future: [] }));
+      if (lastA !== st.a0 || lastB !== st.b0) this.setState(s => ({ past: [...s.past, beforeEdits].slice(-200), future: [] }));
     };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
@@ -1275,7 +1293,6 @@ export default class App extends React.Component {
           vals.selFromBar = sl.aM + 1;
           vals.selPatternBar = sl.aM - sl.trigRegion.start + 1;
           vals.selTrig = sl.trig;
-          vals.selMovedTrig = sl.movedTrig;
           vals.selTrigPattern = sl.trigRegion.bp;
           vals.selEdited = sl.edited;
           vals.selSamples = (sl.bM - sl.aM + 1) + ' bars · smp ' + sl.start.toLocaleString() + '–' + sl.end.toLocaleString();
@@ -1284,10 +1301,9 @@ export default class App extends React.Component {
           vals.onResetSel = () => this.setEdit(S.sel.stemId, S.sel.regionIdx, { del: null, a: null, b: null });
           vals.onNudge = (side, d) => {
             const lim = core.trimLimits(sd.slices, S.sel.regionIdx, a.regs);
-            const patch = side === 'l'
-              ? { a: Math.max(lim.minA, Math.min(sl.bM, sl.aM + d)), b: sl.bM }
-              : { a: sl.aM, b: Math.min(lim.maxB, Math.max(sl.aM, sl.bM + d)) };
-            this.setEdit(S.sel.stemId, S.sel.regionIdx, { ...patch, del: null });
+            const na = side === 'l' ? Math.max(lim.minA, Math.min(sl.bM, sl.aM + d)) : sl.aM;
+            const nb = side === 'l' ? sl.bM : Math.min(lim.maxB, Math.max(sl.aM, sl.bM + d));
+            this.applyTrim(S.sel.stemId, S.sel.regionIdx, na, nb);
           };
         }
       }
