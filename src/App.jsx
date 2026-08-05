@@ -113,7 +113,7 @@ export default class App extends React.Component {
     const ctx = this.ctx();
     if (!this.analysers[id]) {
       const an = ctx.createAnalyser();
-      an.fftSize = 2048; an.smoothingTimeConstant = 0.72; an.minDecibels = -95; an.maxDecibels = -10;
+      an.fftSize = 4096; an.smoothingTimeConstant = 0.72; an.minDecibels = -95; an.maxDecibels = -10;
       this.analysers[id] = an;
     }
     return this.analysers[id];
@@ -182,32 +182,59 @@ export default class App extends React.Component {
     c.fillStyle = e.clip ? RED : 'color-mix(in srgb, #e0483c 45%, transparent)';
     if (horiz) c.fillRect(w - 1.5, 0, 1.5, h); else c.fillRect(0, 0, w, 1.5);
   }
-  // Oscilloscope: zero-crossing triggered (stable image) + min/max per pixel column.
-  drawScope(el, an) {
+  // Oscilloscope. Shows a fixed ~16 ms window aligned to the strongest rising
+  // zero crossing (with sub-sample interpolation) so the trace stands still
+  // instead of swimming, drawn as a filled, softly glowing envelope.
+  drawScope(el, an, key) {
     const S = this.sizeCanvas(el); if (!S) return;
-    const { c, w, h } = S;
+    const { c, w, h } = S, mid = h / 2, amp = h / 2 - 1.5;
     c.clearRect(0, 0, w, h);
-    c.strokeStyle = this.cols.n8; c.lineWidth = 1;
-    c.beginPath(); c.moveTo(0, h / 2 + 0.5); c.lineTo(w, h / 2 + 0.5); c.stroke();
-    if (!an) return;
+    // grid: centre line + quarter lines
+    c.strokeStyle = 'color-mix(in srgb, currentColor 0%, transparent)';
+    c.fillStyle = this.cols.n8;
+    c.globalAlpha = 0.55; c.fillRect(0, mid - 0.5, w, 1);
+    c.globalAlpha = 0.28; c.fillRect(0, mid - amp * 0.5, w, 0.5); c.fillRect(0, mid + amp * 0.5, w, 0.5);
+    c.globalAlpha = 1;
+    if (!an || !this._ctx) return;
     const N = an.fftSize;
     if (!this.tdBuf || this.tdBuf.length !== N) this.tdBuf = new Float32Array(N);
     an.getFloatTimeDomainData(this.tdBuf);
-    const buf = this.tdBuf, half = N >> 1;
-    let t0 = 0;
-    for (let i = 1; i < half; i++) if (buf[i - 1] <= 0 && buf[i] > 0) { t0 = i; break; }
-    const span = Math.max(2, Math.min(half, N - t0));
-    const amp = h / 2 - 1;
-    c.strokeStyle = this.cols.a4; c.lineWidth = 1; c.beginPath();
-    for (let x = 0; x < w; x++) {
-      const s0 = t0 + Math.floor(x * span / w), s1 = Math.max(s0 + 1, t0 + Math.floor((x + 1) * span / w));
-      let mn = 1, mx = -1;
-      for (let i = s0; i < s1 && i < N; i++) { const v = buf[i]; if (v < mn) mn = v; if (v > mx) mx = v; }
-      if (mx < mn) continue;
-      const y0 = h / 2 - mx * amp, y1 = h / 2 - mn * amp;
-      c.moveTo(x + 0.5, y0); c.lineTo(x + 0.5, Math.max(y1, y0 + 0.7));
+    const buf = this.tdBuf;
+    const win = Math.max(64, Math.min(N >> 1, Math.round(0.016 * this._ctx.sampleRate)));
+    // trigger on the steepest upward zero crossing in the searchable head
+    let t0 = 0, best = 0;
+    for (let i = 1; i < N - win; i++) {
+      if (buf[i - 1] <= 0 && buf[i] > 0) { const slope = buf[i] - buf[i - 1]; if (slope > best) { best = slope; t0 = i; } }
     }
-    c.stroke();
+    const frac = best > 0 ? buf[t0 - 1] / (buf[t0 - 1] - buf[t0] || 1) : 0; // sub-sample offset
+    const at = (x) => {
+      const p = t0 - 1 + frac + (x / w) * win;
+      const i = Math.floor(p), f = p - i;
+      const a = buf[Math.max(0, Math.min(N - 1, i))], b = buf[Math.max(0, Math.min(N - 1, i + 1))];
+      return a + (b - a) * f;                                              // linear interpolation
+    };
+    // per-column min/max envelope keeps fast transients visible at any width
+    const step = Math.max(1, Math.round(win / w));
+    const top = [], bot = [];
+    for (let x = 0; x <= w; x++) {
+      let mn = 1, mx = -1;
+      for (let s = 0; s < step; s++) { const v = at(x + s / step); if (v < mn) mn = v; if (v > mx) mx = v; }
+      top.push(mid - Math.max(-1, Math.min(1, mx)) * amp);
+      bot.push(mid - Math.max(-1, Math.min(1, mn)) * amp);
+    }
+    const path = new Path2D();
+    path.moveTo(0, top[0]);
+    for (let x = 1; x <= w; x++) path.lineTo(x, top[x]);
+    for (let x = w; x >= 0; x--) path.lineTo(x, bot[x]);
+    path.closePath();
+    const grad = c.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, this.cols.a4); grad.addColorStop(0.5, this.cols.a5); grad.addColorStop(1, this.cols.a4);
+    c.globalAlpha = 0.32; c.fillStyle = grad; c.fill(path); c.globalAlpha = 1;
+    c.save();
+    c.shadowColor = this.cols.a5; c.shadowBlur = 4;
+    c.strokeStyle = this.cols.a3; c.lineWidth = 1.1; c.lineJoin = 'round'; c.lineCap = 'round';
+    c.stroke(path);
+    c.restore();
   }
   // Spectrum: log-spaced bands from real dB values, with decaying peak caps.
   drawFft(el, an, key) {
@@ -230,8 +257,10 @@ export default class App extends React.Component {
       pk[i] = v >= pk[i] ? v : pk[i] * 0.93;
       const bh = v * (h - 2);
       if (bh > 0.4) {
-        c.fillStyle = v > 0.78 ? this.cols.a2 : this.cols.a5;
-        c.fillRect(i * bw + 0.5, h - bh, Math.max(1, bw - 1), bh);
+        const g = c.createLinearGradient(0, h, 0, h - bh);
+        g.addColorStop(0, this.cols.a8); g.addColorStop(0.55, this.cols.a5); g.addColorStop(1, v > 0.78 ? this.cols.a2 : this.cols.a4);
+        c.fillStyle = g;
+        c.fillRect(i * bw + 0.5, h - bh, Math.max(1, bw - 1.2), bh);
       }
       if (pk[i] > 0.02) { c.fillStyle = this.cols.a3; c.fillRect(i * bw + 0.5, Math.max(0, h - pk[i] * (h - 2) - 1), Math.max(1, bw - 1), 1); }
     }
@@ -465,7 +494,10 @@ export default class App extends React.Component {
     }
     return this.buffers[stem.id];
   }
-  audible(stem) { const anySolo = this.state.stems.some(s => s.solo); return anySolo ? stem.solo : !stem.muted; }
+  // `stems` is passed explicitly wherever the caller has just computed a new
+  // list: setState has not flushed yet at that point, so reading it back from
+  // state would apply the previous click's mute/solo instead of this one's.
+  audible(stem, stems = this.state.stems) { const anySolo = stems.some(s => s.solo); return anySolo ? stem.solo : !stem.muted; }
   ensureBus() {
     const ctx = this.ctx();
     if (!this.bus) {
@@ -548,6 +580,7 @@ export default class App extends React.Component {
     const a = this.state.analysis; if (!a) return;
     this.stopSources(); const ctx = this.ctx(); ctx.resume();
     this.ensureBus();
+    this.updateGains(); // reflect any mute/solo changed while stopped
     const t0 = ctx.currentTime + 0.12; this.t0 = t0;
     const lr = this.state.loopRegionIdx != null ? a.regs.find(r => r.idx === this.state.loopRegionIdx) : null;
     if (lr) {
@@ -627,7 +660,11 @@ export default class App extends React.Component {
     src.start(ctx.currentTime + 0.05, sl.start / SR, sl.frames / SR);
     this.sources.push(src);
   };
-  updateGains() { if (!this._ctx) return; const t = this._ctx.currentTime; for (const s of this.state.stems) if (this.gains[s.id]) this.gains[s.id].gain.setTargetAtTime(this.audible(s) ? 1 : 0, t, 0.015); }
+  updateGains(stems = this.state.stems) {
+    if (!this._ctx) return;
+    const t = this._ctx.currentTime;
+    for (const s of stems) if (this.gains[s.id]) this.gains[s.id].gain.setTargetAtTime(this.audible(s, stems) ? 1 : 0, t, 0.015);
+  }
 
   // ---------- timeline interaction ----------
   barFromClientX(clientX, el) {
@@ -943,6 +980,19 @@ export default class App extends React.Component {
       theme: S.theme,
       themes: THEMES.map(t => ({ ...t, on: S.theme === t.id, onClick: () => set({ theme: t.id }) })),
     };
+    // Naming is reachable from every step through the header panel, so the
+    // suffix that ends up in every file name can be set before or after analysis.
+    vals.abbrev = S.abbrev;
+    vals.onAbbrev = e => set({ abbrev: e.target.value });
+    vals.zipName = S.zipName; vals.zipNamePh = this.stemsZipName();
+    vals.onZipName = e => set({ zipName: e.target.value });
+    vals.projName = S.projName; vals.projNamePh = this.projFolderName();
+    vals.onProjName = e => set({ projName: e.target.value });
+    vals.namePreviewWav = this.fileBase(S.stems[0] || { name: 'DRUMS' }, 0) + '.wav';
+    vals.namePreviewOt = this.fileBase(S.stems[0] || { name: 'DRUMS' }, 0) + '.ot';
+    vals.namePreviewZip = this.stemsZipName() + '.zip';
+    vals.namePreviewProj = this.projFolderName();
+    vals.hasProjectLoaded = !!S.project;
     // files
     // window-level handlers do the real work; these keep the box highlighted
     vals.onDragOver = e => e.preventDefault();
@@ -986,7 +1036,6 @@ export default class App extends React.Component {
     vals.spmLabel = spm ? spm.toFixed(2) : '—';
     vals.songLenLabel = S.midi && spm ? (() => { const tm = Math.round(S.midi.ticks[S.midi.ticks.length - 1] / (S.midi.ppq * 4)); const sec = tm * spm / SR; return tm + ' bars · ' + (sec / 60 | 0) + ':' + String(Math.round(sec % 60)).padStart(2, '0'); })() : '—';
     vals.regionCountLabel = S.midi ? String(Math.max(0, S.midi.noteCount - 1)) : '—';
-    vals.abbrev = S.abbrev; vals.onAbbrev = e => set({ abbrev: e.target.value });
     vals.onConfirmTempo = this.confirmTempo;
     // regions
     if (S.regions) {
@@ -1124,13 +1173,13 @@ export default class App extends React.Component {
           meterRef: el => { if (el) this.meterEls[stem.id] = el; },
           scopeRef: el => { if (el) this.scopeEls[stem.id] = el; },
           op: (anySolo ? stem.solo : !stem.muted) ? 1 : 0.35,
-          onMute: () => { const st = S.stems.map(x => x.id === stem.id ? { ...x, muted: !x.muted } : x); set({ stems: st }); this.updateGains(); },
+          onMute: () => { const st = S.stems.map(x => x.id === stem.id ? { ...x, muted: !x.muted } : x); set({ stems: st }); this.updateGains(st); },
           // plain click solos this track alone; shift-click adds to the solo group
           onSolo: (e) => {
             const soloed = S.stems.filter(x => x.solo);
             const only = soloed.length === 1 && soloed[0].id === stem.id;
             const st = S.stems.map(x => ({ ...x, solo: e.shiftKey ? (x.id === stem.id ? !x.solo : x.solo) : (x.id === stem.id ? !only : false) }));
-            set({ stems: st }); this.updateGains();
+            set({ stems: st }); this.updateGains(st);
           },
           ghosts: (sd ? sd.ghosts : []).map(g => ({
             k: g.region.idx, left: g.region.start * ppm, width: Math.max(4, g.region.len * ppm - 2),
@@ -1230,8 +1279,6 @@ export default class App extends React.Component {
       vals.exportSummary = nF * 2 + ' files · ' + (totB / 1048576).toFixed(1) + ' MB total';
       vals.onZip = this.exportZip; vals.zipBusy = S.zipBusy;
       vals.zipLabel = S.zipBusy ? 'Packing ZIP…' : 'Download all (ZIP)';
-      vals.zipName = S.zipName; vals.zipNamePh = this.stemsZipName();
-      vals.onZipName = e => set({ zipName: e.target.value });
       vals.goProject = () => set({ step: 'project' });
     }
     // project
@@ -1244,8 +1291,6 @@ export default class App extends React.Component {
     vals.onProjectDragOver = e => e.preventDefault();
     vals.onProjectDragLeave = e => e.preventDefault();
     vals.projDropping = !!S.dragging;
-    vals.projName = S.projName; vals.projNamePh = this.projFolderName();
-    vals.onProjName = e => set({ projName: e.target.value });
     vals.hasProject = !!S.project; vals.noProject = !S.project;
     if (S.project) {
       const p = S.project;
