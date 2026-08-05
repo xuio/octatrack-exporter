@@ -55,5 +55,7 @@ export function useProjectFolder() {
     setReport(null);
   }, []);
 
-  return { project, report, busy, setReport, setBusy, load };
+  const clear = useCallback(() => { setProject(null); setReport(null); }, []);
+
+  return { project, report, busy, setReport, setBusy, load, clear };
 }

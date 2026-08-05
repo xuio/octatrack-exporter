@@ -8,7 +8,7 @@ import {
  * Splits the arrangement MIDI into sections. Returns an error string instead of
  * throwing so the tempo screen can show it inline.
  */
-export function useRegions({ midi, bpm, demoNames }) {
+export function useRegions({ midi, bpm, nameHints }) {
   const [regions, setRegions] = useState(null);
   const [meta, setMeta] = useState(null);
   const [error, setError] = useState('');
@@ -18,12 +18,12 @@ export function useRegions({ midi, bpm, demoNames }) {
     if (!(tempo >= 30 && tempo <= 300)) { setError('BPM must be between 30 and 300.'); return false; }
     const result = regionsFromTicks(midi.ticks, midi.ppq);
     if (result.error) { setError(result.error); return false; }
-    if (demoNames) result.regions.forEach((r, i) => { r.name = demoNames[i] || ''; });
+    if (nameHints) result.regions.forEach((r, i) => { r.name = nameHints[i] || ''; });
     setError('');
     setRegions(result.regions);
     setMeta({ snapped: result.snapped, totalMeasures: result.totalMeasures });
     return true;
-  }, [midi, bpm, demoNames]);
+  }, [midi, bpm, nameHints]);
 
   const rename = useCallback((idx, name) => {
     setRegions(list => list && list.map(r => r.idx === idx ? { ...r, name } : r));
@@ -97,19 +97,34 @@ export function useAnalysisBase() {
  * is what keeps the timeline, the exports and the audio engine in step.
  */
 export function useTracks({ base, stems, threshold, edits }) {
-  return useMemo(() => {
-    const tracks = new Map();
-    if (!base) return { tracks, warnings: [] };
+  // Keyed on the stem *ids*, not the array: a rename changes the array but not
+  // a single slice, and re-deriving would hand the audio engine a new program
+  // and make it re-cue mid-playback.
+  const stemIds = stems.map(s => s.id).join(',');
+
+  const tracks = useMemo(() => {
+    const built = new Map();
+    if (!base) return built;
     const thLin = dbToLin(threshold);
-    const warnings = [...base.warnings];
-    for (const stem of stems) {
-      const peaks = base.peaks.get(stem.id);
-      if (!peaks) continue;
-      const built = buildStemSlices(peaks, base.regs, base.bounds, thLin, edits[stem.id] || {});
-      tracks.set(stem.id, built);
-      if (!built.slices.length) warnings.push(`${stem.name} has no slices at this threshold — no files will be exported for it.`);
-      if (built.slices.length > 64) warnings.push(`${stem.name}: ${built.slices.length} slices exceeds the Octatrack limit of 64 — the .ot file keeps the first 64.`);
+    for (const id of base.peaks.keys()) {
+      if (!stemIds.split(',').includes(String(id))) continue;
+      built.set(id, buildStemSlices(base.peaks.get(id), base.regs, base.bounds, thLin, edits[id] || {}));
     }
-    return { tracks, warnings };
-  }, [base, stems, threshold, edits]);
+    return built;
+  }, [base, stemIds, threshold, edits]);
+
+  // Warnings mention stem names, so they follow renames — they feed the UI only.
+  const warnings = useMemo(() => {
+    if (!base) return [];
+    const list = [...base.warnings];
+    for (const stem of stems) {
+      const track = tracks.get(stem.id);
+      if (!track) continue;
+      if (!track.slices.length) list.push(`${stem.name} has no slices at this threshold — no files will be exported for it.`);
+      if (track.slices.length > 64) list.push(`${stem.name}: ${track.slices.length} slices exceeds the Octatrack limit of 64 — the .ot file keeps the first 64.`);
+    }
+    return list;
+  }, [base, stems, tracks]);
+
+  return { tracks, warnings };
 }

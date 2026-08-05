@@ -35,14 +35,29 @@ export function buildStemSlices(peaks, regs, bounds, thLin, edits = {}) {
   }
   // sections never overlap, so neither can their slices
   slices.sort((x, y) => x.aM - y.aM);
+
   let out = 0;
-  slices.forEach((s, i) => {
-    s.trigRegion = s.region; s.trigRegionIdx = s.region.idx; s.movedTrig = false;
-    s.trig = trigStep(s.aM - s.region.start, s.region.scale.steps);
-    s.start = bounds[s.aM]; s.end = bounds[s.bM + 1]; s.frames = s.end - s.start;
-    s.num = i + 1; s.outStart = out; out += s.frames; s.outEnd = out;
+  const placed = slices.map((slice, i) => {
+    const start = bounds[slice.aM], end = bounds[slice.bM + 1], frames = end - start;
+    const outStart = out;
+    out += frames;
+    return {
+      ...slice,
+      // a slice lives inside one section, so it always trigs from that pattern
+      trigRegion: slice.region,
+      trigRegionIdx: slice.region.idx,
+      movedTrig: false,
+      trig: trigStep(slice.aM - slice.region.start, slice.region.scale.steps),
+      start,
+      end,
+      frames,
+      num: i + 1,
+      outStart,
+      outEnd: out,
+    };
   });
-  return { slices, ghosts, totalFrames: out };
+
+  return { slices: placed, ghosts, totalFrames: out };
 }
 
 // Turn a dragged span [a,b] — which may reach outside its own section — into

@@ -66,6 +66,9 @@ export function useSliceEdits() {
     future: prev.future.slice(1),
   } : prev)), []);
 
+  /** Swap in a whole edit set (restoring a session) as one undoable step. */
+  const replace = useCallback((next) => apply(() => next, true), [apply]);
+
   const reset = useCallback(() => apply(() => ({}), true), [apply]);
   const clearAll = useCallback(() => setState({ edits: {}, past: [], future: [] }), []);
 
@@ -78,6 +81,6 @@ export function useSliceEdits() {
     edits: state.edits,
     canUndo: state.past.length > 0,
     canRedo: state.future.length > 0,
-    count, trim, setRegionEdit, undo, redo, reset, clearAll,
+    count, trim, setRegionEdit, undo, redo, reset, replace, clearAll,
   };
 }

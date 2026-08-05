@@ -1,3 +1,5 @@
+import { memo } from 'react';
+
 const FILLS = {
   // [peak envelope, body, highlight] with matching opacities — the outer shape
   // sits darker and the body core brighter, the classic two-tone DAW waveform
@@ -6,7 +8,7 @@ const FILLS = {
   bars: { colors: ['var(--color-accent-400)', 'none', 'var(--color-accent-200)'], alpha: [1, 0, 0.8] },
 };
 
-export default function SliceBlock({ slice, left, width, buckets, paths, style, selected, onSelect, onAudition, onTrimStart }) {
+function SliceBlock({ slice, left, width, buckets, paths, style, selected, onSelect, onAudition, onTrimStart }) {
   const fill = FILLS[style] || FILLS.spectral;
   const tip = `${slice.label} · bars ${slice.aM + 1}–${slice.bM + 1}${slice.edited ? ' (trimmed)' : ''}`
     + ' — drag the edges to trim, double-click to audition';
@@ -48,3 +50,7 @@ export default function SliceBlock({ slice, left, width, buckets, paths, style, 
     </div>
   );
 }
+
+// One of these exists per clip per stem; re-rendering them all because a
+// neighbouring lane changed is the one thing that gets expensive at scale.
+export default memo(SliceBlock);

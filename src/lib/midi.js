@@ -42,12 +42,30 @@ export function regionsFromTicks(ticks, ppq) {
 
 export function bankPattern(idx) { const bank = 2 + Math.floor((idx - 1) / 16), pattern = ((idx - 1) % 16) + 1; return { bank, pattern, bp: 'B' + bank + ' P' + pattern }; }
 
-// TEMPO MULTIPLIER ↔ trig keys per bar: 1x=16, 1/2x=8, 1/4x=4, 1/8x=2.
-export function scaleFor(len) {
-  const m = len <= 4 ? ['1x', 16] : len <= 8 ? ['1/2x', 8] : len <= 16 ? ['1/4x', 4] : len <= 32 ? ['1/8x', 2] : null;
-  if (!m) return { ok: false, mult: '—', steps: 0, LEN: 0, MAX: 0, label: '> 32 bars', master: '—' };
-  const LEN = m[1] * len, MAX = Math.ceil(LEN / 16) * 16;
-  return { ok: true, mult: m[0], steps: m[1], LEN, MAX, label: LEN + '/' + MAX + ' · ' + m[0], master: 'MASTER: ' + String(LEN).padStart(4, '0') + ' · ' + m[0] };
+/**
+ * How many trig keys one bar is worth, per pattern scale. A section has to fit
+ * in 64 steps, so the longer it is the coarser the grid gets.
+ */
+const SCALES = [
+  { upToBars: 4, mult: '1x', stepsPerBar: 16 },
+  { upToBars: 8, mult: '1/2x', stepsPerBar: 8 },
+  { upToBars: 16, mult: '1/4x', stepsPerBar: 4 },
+  { upToBars: 32, mult: '1/8x', stepsPerBar: 2 },
+];
+
+export function scaleFor(bars) {
+  const scale = SCALES.find(s => bars <= s.upToBars);
+  if (!scale) return { ok: false, mult: '—', steps: 0, LEN: 0, MAX: 0, label: '> 32 bars', master: '—' };
+  const LEN = scale.stepsPerBar * bars, MAX = Math.ceil(LEN / 16) * 16;
+  return {
+    ok: true,
+    mult: scale.mult,
+    steps: scale.stepsPerBar,
+    LEN,
+    MAX,
+    label: `${LEN}/${MAX} · ${scale.mult}`,
+    master: `MASTER: ${String(LEN).padStart(4, '0')} · ${scale.mult}`,
+  };
 }
 
 export const trigStep = (measureInRegion, steps) => measureInRegion * steps + 1; // measureInRegion 0-based

@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
-import { parseWav, parseMidi, readZip, audioEntries, makeDemo } from '../lib/index.js';
+import { parseMidi, readZip, audioEntries } from '../lib/index.js';
+import { decodeWav, synthesizeDemo } from '../workers/audioClient.js';
 
 const stemName = (fileName) =>
   fileName.replace(/\.wav$/i, '').replace(/[_-]?\d+$/, '').toUpperCase().slice(0, 20) || 'STEM';
@@ -56,7 +57,7 @@ export function useStems({ onLoaded }) {
         if (/\.(mid|midi)$/i.test(file.name)) {
           nextMidi = parseMidi(buf, file.name);
         } else if (/\.wav$/i.test(file.name)) {
-          const parsed = parseWav(buf, file.name);
+          const parsed = await decodeWav(buf, file.name);
           collected.push({ id: nextId.current++, name: stemName(file.name), muted: false, solo: false, ...parsed });
         } else {
           errors.push(`${file.name}: unsupported type (need .wav, .mid or .zip)`);
@@ -75,7 +76,7 @@ export function useStems({ onLoaded }) {
   const loadDemo = useCallback((id) => {
     setDemoLoading(true);
     setTimeout(async () => {
-      const demo = makeDemo(id);
+      const demo = await synthesizeDemo(id);
       demoNames.current = demo.regionNames;
       const files = demo.files.map(f => ({ name: f.name, arrayBuffer: () => Promise.resolve(f.data) }));
       files.push({ name: demo.midi.name, arrayBuffer: () => Promise.resolve(demo.midi.data) });
@@ -87,9 +88,14 @@ export function useStems({ onLoaded }) {
 
   const update = useCallback(fn => setStems(prev => fn(prev)), []);
 
+  const clear = useCallback(() => {
+    setStems([]); setMidi(null); setError(''); setReading('');
+    demoNames.current = null;
+  }, []);
+
   return {
     stems, midi, error, reading, demoLoading, demoNames,
-    addFiles, loadDemo, setError,
+    addFiles, loadDemo, setError, clear,
     removeMidi: () => setMidi(null),
     rename: (id, name) => update(list => list.map(s => s.id === id ? { ...s, name: name.toUpperCase().slice(0, 20) } : s)),
     remove: (id) => update(list => list.filter(s => s.id !== id)),

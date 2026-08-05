@@ -7,6 +7,7 @@ const StemRow = ({ stem, index, count, onRename, onMove, onRemove }) => (
     <span className="mono" style={{ width: 16, fontSize: 12, color: 'var(--color-accent-300)' }}>{index + 1}</span>
     <input
       className="input"
+      aria-label={`Name of stem ${index + 1}`}
       value={stem.name}
       onChange={e => onRename(stem.id, e.target.value)}
       style={{ width: 150, minHeight: 30, padding: '3px 8px', fontSize: 12.5, letterSpacing: '.05em' }}
@@ -22,15 +23,19 @@ const StemRow = ({ stem, index, count, onRename, onMove, onRemove }) => (
       <span className="tag tag-accent" style={{ fontSize: 10 }} title={stem.warnings.join('; ')}>{stem.warnings.join('; ')}</span>
     )}
     <div style={{ display: 'flex', gap: 3 }}>
-      <button className="msb" style={{ width: 20, height: 18 }} onClick={() => onMove(index, -1)} disabled={index === 0}>▲</button>
-      <button className="msb" style={{ width: 20, height: 18 }} onClick={() => onMove(index, 1)} disabled={index === count - 1}>▼</button>
-      <button className="msb" style={{ width: 20, height: 18 }} onClick={() => onRemove(stem.id)}>✕</button>
+      <button className="msb" style={{ width: 20, height: 18 }} onClick={() => onMove(index, -1)} disabled={index === 0} aria-label={`Move ${stem.name} up`}>▲</button>
+      <button className="msb" style={{ width: 20, height: 18 }} onClick={() => onMove(index, 1)} disabled={index === count - 1} aria-label={`Move ${stem.name} down`}>▼</button>
+      <button className="msb" style={{ width: 20, height: 18 }} onClick={() => onRemove(stem.id)} aria-label={`Remove ${stem.name}`}>✕</button>
     </div>
   </div>
 );
 
 /** Step 1: stems and the arrangement MIDI. */
-export default function FilesStep({ stems, midi, error, reading, demoLoading, dragging, hint, canContinue, onFiles, onLoadDemo, onRemoveMidi, onRename, onMove, onRemove, onContinue }) {
+export default function FilesStep({
+  stems, midi, error, reading, demoLoading, dragging, hint, canContinue, session,
+  onFiles, onLoadDemo, onRemoveMidi, onRename, onMove, onRemove, onContinue,
+  onRestoreSession, onDismissSession,
+}) {
   const inputRef = useRef(null);
 
   return (
@@ -74,6 +79,24 @@ export default function FilesStep({ stems, midi, error, reading, demoLoading, dr
         <div style={{ fontSize: 11, color: 'var(--color-neutral-600)', lineHeight: 1.6 }}>
           Fully client-side — audio and project data never leave this browser. Nothing is uploaded, nothing is stored.
         </div>
+
+        {session && (
+          <div className="card elev-sm" style={{ border: '1px solid var(--color-accent-700)' }}>
+            <div className="card-kicker">Previous session</div>
+            <div style={{ fontSize: 12, color: 'var(--color-neutral-300)' }}>
+              These are the same files you worked on before, with{' '}
+              <b style={{ fontWeight: 500 }}>{session.edits} slice edit{session.edits === 1 ? '' : 's'}</b> saved.
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+              <button className="btn btn-primary" style={{ fontSize: 11, padding: '3px 10px' }} onClick={onRestoreSession}>
+                Restore edits
+              </button>
+              <button className="btn btn-ghost" style={{ fontSize: 11, padding: '3px 8px' }} onClick={onDismissSession}>
+                Start fresh
+              </button>
+            </div>
+          </div>
+        )}
 
         {error && (
           <div style={{ fontSize: 12, color: 'var(--color-accent-300)', background: 'var(--color-accent-900)', border: '1px solid var(--color-accent-800)', borderRadius: 'var(--radius-md)', padding: '10px 12px', whiteSpace: 'pre-line' }}>

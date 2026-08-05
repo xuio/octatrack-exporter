@@ -30,8 +30,10 @@ export default function TrackRail({
               style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
             />
             <span style={{ display: 'flex', gap: 3, flex: 'none' }}>
-              <button className={`msb ${state.muted ? 'on' : ''}`} onClick={() => onMute(stem.id)}>M</button>
-              <button className={`msb ${state.solo ? 'on' : ''}`} onClick={e => onSolo(stem.id, e.shiftKey)}>S</button>
+              <button className={`msb ${state.muted ? 'on' : ''}`} onClick={() => onMute(stem.id)}
+                aria-label={`${state.muted ? 'Unmute' : 'Mute'} ${stem.name}`} aria-pressed={!!state.muted}>M</button>
+              <button className={`msb ${state.solo ? 'on' : ''}`} onClick={e => onSolo(stem.id, e.shiftKey)}
+                aria-label={`Solo ${stem.name} (shift-click to add)`} aria-pressed={!!state.solo}>S</button>
             </span>
             {scopeMode !== 'off' && (
               <Oscilloscope

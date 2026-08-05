@@ -138,7 +138,12 @@ the transport where it is playing.
 
 Per-track meters are dBFS with a red zone above −3 dB and a hard line at 0; the scopes and spectrum
 analyzers are there to check what a slice actually contains. The **VOL** slider is monitoring only —
-it never touches the exported audio.
+it never touches the exported audio. The playhead is corrected for output latency, so it tracks what
+you *hear* rather than what has been handed to the audio device — on Bluetooth that is the difference
+between the marker leading the sound by a beat and it being in step.
+
+Edits are saved as you go. Reload the page, drop the same stems back in, and OSSC offers to put your
+trims, names and tempo back — the audio is too large to keep, but the work is not.
 
 Switch to **Table** for the pattern map: which slice each track trigs in each pattern, and on which
 step.
@@ -208,8 +213,9 @@ sample-exact equality between source and export.
 npm install
 npm run dev        # dev server
 npm run lint       # ESLint, incl. the react-hooks rules
+npm run types      # tsc --checkJs over the pure core
 npm test           # core tests (node --test, no browser needed)
-npm run check      # lint + tests
+npm run check      # lint + types + tests
 npm run build      # production build → dist/
 ```
 
@@ -217,6 +223,9 @@ Linting is not decoration here: `react-hooks/rules-of-hooks` and
 `exhaustive-deps` catch precisely the class of bug this codebase has actually
 hit — stale closures reading state before it flushed, and effects missing a
 dependency. CI runs `--max-warnings 0`, so a new warning fails the build.
+`npm run types` runs TypeScript over `src/lib`, `src/export` and the audio
+engine with `checkJs`: this domain is all bar indices, sample offsets and byte
+offsets, and they are all just numbers until something checks them.
 
 Pushing to `main` lints, tests, builds, and deploys to GitHub Pages
 ([`.github/workflows/pages.yml`](.github/workflows/pages.yml)).

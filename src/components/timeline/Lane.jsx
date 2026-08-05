@@ -1,7 +1,8 @@
+import { memo } from 'react';
 import SliceBlock from './SliceBlock.jsx';
 
 /** One stem's row of clips, plus the dashed placeholders that add a clip back. */
-export default function Lane({
+function Lane({
   stem, track, height, ppm, gridImage, dimmed, selectedRegionIdx, waveStyle,
   buckets, pathsFor, visibleRange, onSelect, onDeselect, onAudition, onTrimStart, onRestore,
 }) {
@@ -48,3 +49,5 @@ export default function Lane({
     </div>
   );
 }
+
+export default memo(Lane);

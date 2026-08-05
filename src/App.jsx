@@ -17,6 +17,7 @@ import { useMixer } from './state/useMixer.js';
 import { useFileDrop } from './state/useFileDrop.js';
 import { useProjectFolder } from './state/useProjectFolder.js';
 import { useDragResize } from './state/useDragResize.js';
+import { useSession } from './state/useSession.js';
 import { useExports } from './state/useExports.js';
 import { WaveformCache } from './waveform/WaveformCache.js';
 
@@ -43,13 +44,42 @@ export default function App() {
   });
   const { stems, midi } = stemsApi;
   const mixer = useMixer(stems);
-  const regions = useRegions({ midi, bpm, demoNames: stemsApi.demoNames.current });
+  const [regionNameHints, setRegionNameHints] = useState(null);
+  const regions = useRegions({ midi, bpm, nameHints: regionNameHints ?? stemsApi.demoNames.current });
   const analysis = useAnalysisBase();
   const edits = useSliceEdits();
   const { tracks, warnings } = useTracks({ base: analysis.base, stems, threshold: prefs.threshold, edits: edits.edits });
   const transport = useTransport({ stems, mixer: mixer.state, tracks, base: analysis.base, volume: prefs.volume ?? 0.85 });
   const projectFolder = useProjectFolder();
   const resize = useDragResize(setPrefs);
+
+  const session = useSession({ stems, midi, bpm, abbrev, regions: regions.regions, edits: edits.edits });
+
+  /** Put back the tempo, names and slice edits saved for exactly these files. */
+  const restoreSession = useCallback(() => {
+    const snapshot = session.restore();
+    if (!snapshot) return;
+    if (snapshot.bpm) { setBpm(snapshot.bpm); setBpmSource('restored from your previous session'); }
+    if (snapshot.abbrev) setAbbrev(snapshot.abbrev);
+    snapshot.names.forEach((name, i) => { if (name && stems[i]) stemsApi.rename(stems[i].id, name); });
+    if (snapshot.regionNames) setRegionNameHints(snapshot.regionNames);
+    edits.replace(snapshot.edits);
+  }, [session, stems, stemsApi, edits]);
+
+  /** Wipe everything and go back to an empty first screen. */
+  const clearAll = useCallback(() => {
+    transport.stop();
+    stemsApi.clear();
+    regions.reset();
+    analysis.reset();
+    edits.clearAll();
+    mixer.clear();
+    projectFolder.clear();
+    session.clear();
+    setRegionNameHints(null);
+    setBpm(''); setBpmSource(''); setAbbrev(''); setZipName(''); setProjectName('');
+    setStep('files');
+  }, [transport, stemsApi, regions, analysis, edits, mixer, projectFolder, session]);
 
   // Loading a different set of stems invalidates everything derived from the
   // old one. Keyed on the ids rather than the array so renaming or reordering
@@ -88,10 +118,12 @@ export default function App() {
   const analyze = useCallback(async () => {
     const base = await analysis.run({ stems, regions: regions.regions, meta: regions.meta, bpm: parseFloat(bpm) });
     waveforms.reset(base.bounds);
-    edits.clearAll();
+    // Edits are keyed by stem and section, so they survive a re-analysis on
+    // purpose — a restored session, or a tempo correction, keeps its trims.
+    // Loading a different set of stems is what clears them (see below).
     transport.setStartBar(1);
     setStep('results');
-  }, [analysis, stems, regions, bpm, waveforms, edits, transport]);
+  }, [analysis, stems, regions, bpm, waveforms, transport]);
 
   // ---------- naming ----------
   const names = useMemo(() => {
@@ -121,8 +153,10 @@ export default function App() {
         enabled={stepEnabled}
         summary={summary}
         theme={prefs.theme}
+        hasWork={stems.length > 0 || !!analysis.base}
         onStep={setStep}
         onTheme={theme => setPrefs({ theme })}
+        onClearAll={clearAll}
         naming={{
           abbrev, zipName, projectName, previews: names,
           zipPlaceholder: stemsZipName('', abbrev),
@@ -141,6 +175,9 @@ export default function App() {
           reading={stemsApi.reading}
           demoLoading={stemsApi.demoLoading}
           dragging={dragging}
+          session={session.offer}
+          onRestoreSession={restoreSession}
+          onDismissSession={session.dismiss}
           canContinue={stems.length > 0 && !!midi}
           hint={!stems.length ? 'waiting for stems…'
             : !midi ? 'waiting for the arrangement MIDI…'

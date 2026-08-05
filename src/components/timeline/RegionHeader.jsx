@@ -40,7 +40,7 @@ export default function RegionHeader({ regions, ppm, loopRegionIdx, selectedRegi
             <button
               className={`msb ${looping ? 'on' : ''}`}
               onClick={e => { e.stopPropagation(); onLoop(region); }}
-              title="Loop this section"
+              title="Loop this section" aria-label={`Loop section ${region.name || region.idx}`} aria-pressed={looping}
               style={{ position: 'absolute', top: 3, right: 3, width: 18, height: 16, fontSize: 11, lineHeight: 1 }}
             >
               ⟳

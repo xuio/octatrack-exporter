@@ -26,6 +26,7 @@ export class AudioEngine {
     this.tracks = [];           // [{ id, chL, chR, frames, slices, audible }]
     this.playing = false;
     this.loop = null;           // { start, end, len } in samples
+    this.floorSample = 0;       // the playhead never reads before this
     this.volume = 0.85;
     this.onStop = null;         // called when linear playback runs off the end
   }
@@ -178,12 +179,14 @@ export class AudioEngine {
     if (loop) {
       this.loop = { ...loop, len: loop.end - loop.start };
       this.anchorSample = loop.start;
+      this.floorSample = loop.start;
       this.loopT0 = t0;
       this.nextIteration = 0;
       this.pumpLoop();
     } else {
       this.loop = null;
       this.anchorSample = from;
+      this.floorSample = from;
       this.scheduleLinear(from, t0);
     }
   }
@@ -194,14 +197,33 @@ export class AudioEngine {
     this.playing = false;
   }
 
-  /** Current playback position in samples. */
+  /**
+   * When the sound leaving the graph *now* actually reaches the listener.
+   *
+   * `currentTime` is the scheduling clock: audio handed to it is heard one
+   * output-latency later (a few ms on a wired interface, but easily 100–300 ms
+   * over Bluetooth). Scheduling uses `currentTime`; anything the user *sees*
+   * must use this, or the playhead runs ahead of what they hear.
+   */
+  audibleTime() {
+    const { currentTime, outputLatency, baseLatency } = this.ctx;
+    const latency = (outputLatency || 0) + (baseLatency || 0);
+    return currentTime - Math.min(latency, 0.5);   // ignore absurd reports
+  }
+
+  /** Current playback position in samples, as heard. */
   position(fallback = 0) {
     if (!this.playing || !this.ctx) return fallback;
     if (this.loop) {
-      const elapsed = this.ctx.currentTime - this.loopT0;
+      const elapsed = this.audibleTime() - this.loopT0;
       if (elapsed >= 0) return this.loop.start + ((elapsed * SR) % this.loop.len);
+      return this.loop.start;
     }
-    return this.anchorSample + Math.max(0, this.ctx.currentTime - this.anchorTime) * SR;
+    // floorSample parks the playhead at the start through the lead-in instead of
+    // showing a position before playback began; a re-cue leaves it alone, so an
+    // edit mid-playback does not make the playhead stall.
+    const heard = this.anchorSample + (this.audibleTime() - this.anchorTime) * SR;
+    return Math.max(this.floorSample, heard);
   }
 
   /** Re-cue the same position with the current program (after an edit). */
@@ -247,6 +269,7 @@ export class AudioEngine {
     this.loop = null;
     this.anchorSample = pos;
     this.anchorTime = at;
+    this.floorSample = pos;
     this.scheduleLinear(pos, at);
     return pos;
   }
@@ -265,6 +288,7 @@ export class AudioEngine {
     this.loop = null;
     this.anchorSample = sample;
     this.anchorTime = at;
+    this.floorSample = sample;
     this.scheduleLinear(sample, at);
   }
 

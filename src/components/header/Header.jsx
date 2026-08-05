@@ -1,5 +1,6 @@
 import NamingPanel from './NamingPanel.jsx';
 import ThemePicker from './ThemePicker.jsx';
+import SessionMenu from './SessionMenu.jsx';
 
 export const STEPS = [
   { id: 'files', label: '1 Files' },
@@ -10,7 +11,7 @@ export const STEPS = [
   { id: 'project', label: '6 Project' },
 ];
 
-export default function Header({ step, enabled, summary, theme, naming, onStep, onTheme }) {
+export default function Header({ step, enabled, summary, theme, naming, hasWork, onStep, onTheme, onClearAll }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '8px 16px', background: 'var(--color-surface)', borderBottom: '1px solid var(--color-divider)', flex: 'none' }}>
       <span style={{ fontWeight: 500, letterSpacing: '.1em', fontSize: 14 }}>OSSC</span>
@@ -30,6 +31,7 @@ export default function Header({ step, enabled, summary, theme, naming, onStep, 
         ))}
         <NamingPanel {...naming} />
         <ThemePicker theme={theme} onSelect={onTheme} />
+        <SessionMenu hasWork={hasWork} onClearAll={onClearAll} />
       </div>
     </div>
   );

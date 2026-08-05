@@ -40,13 +40,13 @@ export default function Transport({
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', borderBottom: '1px solid var(--color-divider)', flexWrap: 'wrap' }}>
-      <button className="tb" onClick={onToStart} title="Back to bar 1">
+      <button className="tb" onClick={onToStart} title="Back to bar 1" aria-label="Back to bar 1">
         <Icon><path d="M2 0h1.6v10H2zM9 0L3.8 5 9 10z" fill="currentColor" /></Icon>
       </button>
-      <button className={`tb ${playing ? 'on' : ''}`} onClick={onPlay} title="Play (space)">
+      <button className={`tb ${playing ? 'on' : ''}`} onClick={onPlay} title="Play (space)" aria-label="Play">
         <Icon><path d="M1 0l8 5-8 5z" fill="currentColor" /></Icon>
       </button>
-      <button className="tb" onClick={onStop} title="Stop (space)">
+      <button className="tb" onClick={onStop} title="Stop (space)" aria-label="Stop">
         <Icon size={9}><rect width="9" height="9" fill="currentColor" /></Icon>
       </button>
 
@@ -67,8 +67,8 @@ export default function Transport({
       </button>
 
       <span style={{ display: 'inline-flex', gap: 3 }}>
-        <button className="tb" onClick={onUndo} disabled={!edits.canUndo} title="Undo slice edit (⌘Z)"><UndoIcon /></button>
-        <button className="tb" onClick={onRedo} disabled={!edits.canRedo} title="Redo slice edit (⇧⌘Z)"><UndoIcon flip /></button>
+        <button className="tb" onClick={onUndo} disabled={!edits.canUndo} title="Undo slice edit (⌘Z)" aria-label="Undo slice edit"><UndoIcon /></button>
+        <button className="tb" onClick={onRedo} disabled={!edits.canRedo} title="Redo slice edit (⇧⌘Z)" aria-label="Redo slice edit"><UndoIcon flip /></button>
       </span>
 
       {loopLabel && (
@@ -79,14 +79,14 @@ export default function Transport({
       )}
 
       <Group label="VOL" title="Monitoring level only — never applied to exported audio">
-        <input type="range" min="0" max="1" step="0.01" style={{ width: 74 }} value={volume} onChange={onVolume} />
+        <input type="range" min="0" max="1" step="0.01" aria-label="Monitoring volume" style={{ width: 74 }} value={volume} onChange={onVolume} />
         <MasterMeter analyser={masterAnalyser} active={active} colors={colors} />
       </Group>
 
       <Group label="THRESHOLD">
-        <input type="range" min="-100" max="-6" step="1" style={{ width: 78 }} value={threshold} onChange={onThresholdSlide} />
+        <input type="range" min="-100" max="-6" step="1" aria-label="Silence threshold in dBFS" style={{ width: 78 }} value={threshold} onChange={onThresholdSlide} />
         <button className="tb" style={{ minWidth: 22, height: 22 }} onClick={() => onThresholdStep(-3)} title="−3 dB">−</button>
-        <input className="input mono" type="text" inputMode="numeric" value={thresholdDraft ?? String(threshold)}
+        <input className="input mono" type="text" inputMode="numeric" aria-label="Silence threshold in dBFS" value={thresholdDraft ?? String(threshold)}
           onChange={onThresholdDraft} onBlur={onThresholdCommit}
           onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
           style={{ width: 46, minHeight: 26, padding: '2px 4px', fontSize: 12, textAlign: 'center' }} />

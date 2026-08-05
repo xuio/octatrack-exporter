@@ -31,5 +31,7 @@ export function useMixer() {
     });
   }, []);
 
-  return { state, toggleMute, toggleSolo };
+  const clear = useCallback(() => setState({}), []);
+
+  return { state, toggleMute, toggleSolo, clear };
 }
