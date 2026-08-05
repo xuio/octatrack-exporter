@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="_ds/nocturne-32e01e88-39db-4e26-80d8-18b9881f6bb5/styles.css">
+<script src="_ds/nocturne-32e01e88-39db-4e26-80d8-18b9881f6bb5/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:color-mix(in srgb,var(--color-bg) 75%,black);font-family:var(--font-body);color:var(--color-text)}
+a{color:var(--color-accent)}a:hover{color:var(--color-accent-300)}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid color-mix(in srgb,var(--color-text) 10%,transparent);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}
+.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:var(--color-accent-800);color:var(--color-accent-100);border-radius:4px;text-decoration:none}
+.dv-tname{font:500 13px/1.2 var(--font-body);color:var(--color-text)}
+.dv-opts{display:flex;flex-wrap:wrap;gap:36px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:var(--color-neutral-800);color:var(--color-neutral-100);border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11.5px/1.4 var(--font-body);color:var(--color-neutral-400);max-width:1150px}
+.dv-olabel b{color:var(--color-neutral-200);font-weight:500}
+.dv-opt:target .dv-oid{background:var(--color-accent);color:var(--color-bg)}
+.dv-next{margin:24px 0 0;font:12px/1.5 var(--font-body);color:var(--color-neutral-500)}
+.mono{font-family:ui-monospace,'SF Mono',Menlo,monospace}
+/* ── option A · modern DAW ── */
+.aShell{width:1150px;background:var(--color-bg);border:1px solid var(--color-neutral-800);border-radius:8px;overflow:hidden;font-size:12px}
+.aTop{display:flex;align-items:center;gap:14px;padding:7px 14px;background:var(--color-surface);border-bottom:1px solid var(--color-divider)}
+.aStep{padding:3px 10px;border-radius:4px;font-size:11px;color:var(--color-neutral-500)}
+.aStep.on{color:var(--color-accent-300);background:color-mix(in srgb,var(--color-accent) 12%,transparent)}
+.aTBtn{width:30px;height:26px;display:grid;place-items:center;border:1px solid var(--color-neutral-800);border-radius:4px;background:var(--color-surface);color:var(--color-neutral-300)}
+.aTBtn:hover{border-color:var(--color-accent-700);color:var(--color-accent-300)}
+.aRow{display:grid;grid-template-columns:150px 1fr}
+.aRegs{display:grid;grid-template-columns:4fr 13fr 8fr 2fr}
+.aReg{padding:4px 8px 3px;border-left:1px solid var(--color-neutral-800);min-width:0;overflow:hidden;white-space:nowrap}
+.aReg em{font-style:normal;font-size:10.5px;font-weight:500;color:var(--color-neutral-200);letter-spacing:.03em}
+.aReg span{display:block;font-size:9.5px;color:var(--color-neutral-500)}
+.aLaneHd{display:flex;align-items:center;gap:6px;padding:0 10px;font-size:11px;letter-spacing:.06em;color:var(--color-neutral-300);border-right:1px solid var(--color-neutral-800)}
+.aMS{width:17px;height:15px;display:grid;place-items:center;font-size:8.5px;border:1px solid var(--color-neutral-800);border-radius:3px;color:var(--color-neutral-500);background:transparent}
+.aMS.on{color:var(--color-accent-200);background:var(--color-accent-800);border-color:var(--color-accent-700)}
+.aCell{border-left:1px solid color-mix(in srgb,var(--color-neutral-800) 55%,transparent);position:relative;min-width:0}
+.aLane{border-bottom:1px solid color-mix(in srgb,var(--color-neutral-800) 45%,transparent)}
+.aSl{position:relative;height:34px;margin:5px 3px;background:var(--color-accent-900);border:1px solid var(--color-accent-700);border-radius:3px;overflow:hidden}
+.aSl:hover{border-color:var(--color-accent-500)}
+.aSl.sel{border-color:var(--color-accent-400);box-shadow:0 0 0 1px var(--color-accent-400),0 0 10px color-mix(in srgb,var(--color-accent) 35%,transparent)}
+.aSl svg{position:absolute;inset:3px 4px;width:calc(100% - 8px);height:calc(100% - 6px);stroke:var(--color-accent-400);fill:none}
+.aSl b{position:absolute;top:0;left:4px;font-size:9px;font-weight:500;color:var(--color-accent-200);font-family:ui-monospace,Menlo,monospace;z-index:1}
+/* ── option B · hardware unit ── */
+.bShell{width:1150px;background:linear-gradient(180deg,var(--color-surface),var(--color-neutral-900) 90%);border-radius:14px;box-shadow:var(--shadow-md);padding:16px 18px 14px;font-size:12px}
+.bLcd{background:color-mix(in srgb,var(--color-bg) 72%,black);border-radius:6px;box-shadow:inset 0 2px 8px rgba(0,0,0,.75),inset 0 0 0 1px rgba(0,0,0,.5);padding:5px 14px;color:var(--color-accent-300);text-shadow:0 0 7px color-mix(in srgb,var(--color-accent) 60%,transparent);font-size:13px;letter-spacing:.1em;font-family:ui-monospace,Menlo,monospace}
+.bKey{width:36px;height:29px;border-radius:5px;background:linear-gradient(180deg,var(--color-neutral-800),var(--color-neutral-900));box-shadow:inset 0 1px 0 color-mix(in srgb,var(--color-neutral-500) 45%,transparent),0 2px 4px rgba(0,0,0,.5);display:grid;place-items:center;color:var(--color-neutral-300)}
+.bKey:hover{color:var(--color-accent-300)}
+.bKnob{width:38px;height:38px;border-radius:50%;background:radial-gradient(circle at 35% 28%,var(--color-neutral-700),var(--color-neutral-900) 72%);box-shadow:0 2px 6px rgba(0,0,0,.6),inset 0 0 0 1px rgba(0,0,0,.45);position:relative;flex:none}
+.bKnob i{position:absolute;left:50%;top:50%;width:2px;height:13px;background:var(--color-accent);border-radius:1px;transform-origin:50% 100%;margin:-16px 0 0 -1px}
+.bLabel{font-size:8.5px;letter-spacing:.14em;color:var(--color-neutral-500);text-transform:uppercase;text-align:center;margin-top:4px}
+.bWell{background:var(--color-bg);border-radius:8px;box-shadow:inset 0 2px 10px rgba(0,0,0,.6),inset 0 0 0 1px rgba(0,0,0,.45);overflow:hidden;margin-top:14px}
+.bReg{padding:4px 8px 3px;border-left:1px solid var(--color-neutral-900);min-width:0;overflow:hidden;white-space:nowrap}
+.bReg em{font-style:normal;font-size:10.5px;font-weight:500;color:var(--color-accent-300);letter-spacing:.05em;text-shadow:0 0 6px color-mix(in srgb,var(--color-accent) 40%,transparent);font-family:ui-monospace,Menlo,monospace}
+.bReg span{display:block;font-size:9.5px;color:var(--color-neutral-600);font-family:ui-monospace,Menlo,monospace}
+.bLaneHd{display:flex;align-items:center;gap:6px;padding:0 10px;font-size:10.5px;letter-spacing:.1em;color:var(--color-neutral-400);border-right:1px solid var(--color-neutral-900)}
+.bLed{width:6px;height:6px;border-radius:50%;background:var(--color-accent);box-shadow:0 0 6px var(--color-accent);flex:none}
+.bLed.off{background:var(--color-neutral-800);box-shadow:none}
+.bCell{border-left:1px solid color-mix(in srgb,var(--color-neutral-900) 80%,transparent);position:relative;min-width:0}
+.bLane{border-bottom:1px solid color-mix(in srgb,var(--color-neutral-900) 70%,transparent)}
+.bSl{position:relative;height:34px;margin:5px 3px;background:color-mix(in srgb,var(--color-accent-900) 75%,transparent);border:1px solid var(--color-accent-800);border-radius:3px;overflow:hidden;box-shadow:0 0 9px color-mix(in srgb,var(--color-accent) 10%,transparent)}
+.bSl.sel{border-color:var(--color-accent-400);box-shadow:0 0 12px color-mix(in srgb,var(--color-accent) 40%,transparent)}
+.bSl svg{position:absolute;inset:3px 4px;width:calc(100% - 8px);height:calc(100% - 6px);stroke:var(--color-accent-300);fill:none;filter:drop-shadow(0 0 2px color-mix(in srgb,var(--color-accent) 65%,transparent))}
+.bSl b{position:absolute;top:0;left:4px;font-size:9px;font-weight:500;color:var(--color-accent-200);font-family:ui-monospace,Menlo,monospace;z-index:1}
+/* ── option C · focused editorial ── */
+.cShell{width:1150px;background:var(--color-bg);border:1px solid color-mix(in srgb,var(--color-neutral-800) 60%,transparent);border-radius:8px;padding:28px 32px 22px;font-size:12px}
+.cRule{height:1px;border:0;margin:14px 0;background:linear-gradient(to right,transparent,var(--color-divider) 48px,var(--color-divider) calc(100% - 48px),transparent)}
+.cGhost{width:32px;height:32px;display:grid;place-items:center;border:none;background:transparent;border-radius:8px;color:var(--color-neutral-300)}
+.cGhost:hover{background:color-mix(in srgb,var(--color-accent) 10%,transparent);color:var(--color-accent-300)}
+.cRegRow{display:grid;grid-template-columns:4fr 13fr 8fr 2fr;margin-left:120px}
+.cReg{min-width:0;overflow:hidden;white-space:nowrap;padding-right:8px}
+.cReg em{font-style:normal;display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-300)}
+.cReg em::before{content:'';width:10px;height:2px;background:var(--color-accent);flex:none}
+.cReg span{display:block;font-size:9.5px;color:var(--color-neutral-500);margin:2px 0 0 16px}
+.cLane{display:grid;grid-template-columns:120px 1fr;align-items:center;background:linear-gradient(to right,transparent,color-mix(in srgb,var(--color-text) 7%,transparent) 48px,color-mix(in srgb,var(--color-text) 7%,transparent) calc(100% - 48px),transparent) no-repeat bottom / 100% 1px}
+.cLaneHd{display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--color-neutral-400)}
+.cMS{width:16px;height:14px;display:grid;place-items:center;font-size:8px;border-radius:3px;color:var(--color-neutral-600);background:transparent;border:none;letter-spacing:0}
+.cMS:hover{color:var(--color-accent-300)}
+.cCells{display:grid;grid-template-columns:4fr 13fr 8fr 2fr}
+.cCell{position:relative;min-width:0;border-left:1px solid color-mix(in srgb,var(--color-neutral-800) 40%,transparent)}
+.cSl{position:relative;height:30px;margin:6px 2px;background:color-mix(in srgb,var(--color-accent-900) 55%,transparent);border-radius:4px;overflow:hidden}
+.cSl:hover{background:color-mix(in srgb,var(--color-accent-900) 85%,transparent)}
+.cSl.sel{box-shadow:0 0 0 1px var(--color-accent-500)}
+.cSl svg{position:absolute;inset:3px 5px;width:calc(100% - 10px);height:calc(100% - 6px);stroke:var(--color-accent-500);fill:none}
+.cSl b{position:absolute;top:0;left:5px;font-size:8.5px;font-weight:500;color:var(--color-accent-300);font-family:ui-monospace,Menlo,monospace;z-index:1}
+</style>
+</helmet>
+<section class="dv-turn" id="t1">
+<svg width="0" height="0" style="position:absolute"><defs>
+<polyline id="wA" vector-effect="non-scaling-stroke" points="0,16 2,3 4,29 6,8 8,24 10,14 12,18 14,2 16,30 18,10 20,22 22,15 24,17 26,4 28,28 30,9 32,23 34,13 36,19 38,3 40,29 42,11 44,21 46,15 48,17 50,5 52,27 54,8 56,24 58,14 60,18 62,2 64,30 66,10 68,22 70,15 72,17 74,4 76,28 78,12 80,20 82,14 84,18 86,3 88,29 90,9 92,23 94,15 96,17 100,16"></polyline>
+<polyline id="wB" vector-effect="non-scaling-stroke" points="0,16 5,10 10,22 15,8 20,24 25,12 30,20 35,6 40,26 45,13 50,19 55,9 60,23 65,11 70,21 75,7 80,25 85,12 90,20 95,14 100,16"></polyline>
+<polyline id="wC" vector-effect="non-scaling-stroke" points="0,16 8,13 16,19 24,11 32,21 40,14 48,18 56,10 64,22 72,13 80,19 88,12 96,20 100,16"></polyline>
+</defs></svg>
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">OSSC — three chrome treatments of the results screen (Shake · 111 BPM · 5 stems · regions B2 P1–P4 shown)</span></div>
+<p style="max-width:820px;margin:0 0 24px;font-size:12.5px;line-height:1.6;color:var(--color-neutral-400)">Same screen, same data, three levels of &ldquo;instrument-ness.&rdquo; All use Nocturne tokens throughout. The chosen direction will carry the whole wizard (Files &rarr; BPM &rarr; Regions &rarr; Results &rarr; Export &rarr; Project builder). Notes: PADS slice 2 is shown selected; its trim (audio enters bar&nbsp;7 of a 13-bar region) demonstrates §4 trimming; scale readouts follow §6 (13 bars &rarr; <span class="mono">52/64 · 1/4x</span>).</p>
+<div class="dv-opts">
+
+<div class="dv-opt" id="1a">
+<div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a><b>Modern DAW</b>&nbsp;&mdash; flat panels, hairline grid, dense; Ableton/Bitwig temperament. Chrome recedes, data is the surface.</div>
+<div class="aShell">
+  <div class="aTop">
+    <span style="font-weight:500;letter-spacing:.08em;font-size:13px">OSSC</span>
+    <span style="color:var(--color-neutral-500)">Shake &middot; 5 stems &middot; <span class="mono" style="color:var(--color-accent-300)">111.0 BPM</span></span>
+    <div style="display:flex;gap:2px;margin-left:auto">
+      <span class="aStep">1 Files</span><span class="aStep">2 Tempo</span><span class="aStep">3 Regions</span><span class="aStep on">4 Results</span><span class="aStep">5 Export</span>
+    </div>
+    <button class="btn btn-primary" style="padding:4px 12px;font-size:12px">Export</button>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--color-divider)">
+    <button class="aTBtn"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 0l8 5-8 5z" fill="currentColor"></path></svg></button>
+    <button class="aTBtn"><svg width="9" height="9" viewBox="0 0 9 9"><rect width="9" height="9" fill="currentColor"></rect></svg></button>
+    <span class="mono" style="font-size:14px;letter-spacing:.08em;color:var(--color-accent-300);border:1px solid var(--color-neutral-800);border-radius:4px;padding:3px 10px;background:var(--color-surface)">009.1.1</span>
+    <span style="font-size:10px;color:var(--color-neutral-500);margin-left:10px">MASTER</span>
+    <div style="width:110px;height:3px;border-radius:2px;background:var(--color-neutral-800);position:relative"><i style="position:absolute;left:0;top:0;bottom:0;width:72%;background:var(--color-accent-600);border-radius:2px"></i><i style="position:absolute;left:72%;top:-4px;width:11px;height:11px;border-radius:50%;background:var(--color-neutral-300);margin-left:-5px"></i></div>
+    <div style="display:flex;gap:4px;margin-left:auto;align-items:center">
+      <span style="font-size:10px;color:var(--color-neutral-500)">ZOOM</span>
+      <button class="aTBtn" style="width:24px;height:22px">&minus;</button><button class="aTBtn" style="width:24px;height:22px">+</button>
+    </div>
+  </div>
+  <div class="aRow" style="border-bottom:1px solid var(--color-neutral-800)">
+    <div style="border-right:1px solid var(--color-neutral-800)"></div>
+    <div>
+      <div class="aRegs">
+        <div class="aReg"><em>01 INTRO</em><span>B2 P1 &middot; 4 bars &middot; <span class="mono">64/64 &middot; 1x</span></span></div>
+        <div class="aReg" style="background:color-mix(in srgb,var(--color-accent-900) 40%,transparent)"><em>02 VERSE 1</em><span>B2 P2 &middot; 13 bars &middot; <span class="mono">52/64 &middot; 1/4x</span></span></div>
+        <div class="aReg"><em>03 CHORUS</em><span>B2 P3 &middot; 8 bars &middot; <span class="mono">64/64 &middot; 1/2x</span></span></div>
+        <div class="aReg"><em>04 BRK</em><span>B2 P4 &middot; 2</span></div>
+      </div>
+      <div class="aRegs mono" style="border-top:1px solid color-mix(in srgb,var(--color-neutral-800) 55%,transparent);background:repeating-linear-gradient(to right,color-mix(in srgb,var(--color-neutral-800) 45%,transparent) 0 1px,transparent 1px 37px)">
+        <div style="padding:1px 4px;font-size:9px;color:var(--color-neutral-500);border-left:1px solid var(--color-neutral-800)">1</div>
+        <div style="padding:1px 4px;font-size:9px;color:var(--color-neutral-500);border-left:1px solid var(--color-neutral-800)">5</div>
+        <div style="padding:1px 4px;font-size:9px;color:var(--color-neutral-500);border-left:1px solid var(--color-neutral-800)">18</div>
+        <div style="padding:1px 4px;font-size:9px;color:var(--color-neutral-500);border-left:1px solid var(--color-neutral-800)">26</div>
+      </div>
+    </div>
+  </div>
+  <div style="position:relative">
+    <div class="aRow aLane">
+      <div class="aLaneHd">DRUMS<span style="display:flex;gap:3px;margin-left:auto"><button class="aMS">M</button><button class="aMS">S</button></span></div>
+      <div class="aRegs">
+        <div class="aCell"><div class="aSl"><b>1</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wA"></use></svg></div></div>
+        <div class="aCell"><div class="aSl"><b>2</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wA"></use></svg></div></div>
+        <div class="aCell"><div class="aSl"><b>3</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wA"></use></svg></div></div>
+        <div class="aCell"><div class="aSl"><b>4</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wA"></use></svg></div></div>
+      </div>
+    </div>
+    <div class="aRow aLane">
+      <div class="aLaneHd">BASS<span style="display:flex;gap:3px;margin-left:auto"><button class="aMS">M</button><button class="aMS">S</button></span></div>
+      <div class="aRegs">
+        <div class="aCell"></div>
+        <div class="aCell"><div class="aSl"><b>1</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wB"></use></svg></div></div>
+        <div class="aCell"><div class="aSl"><b>2</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wB"></use></svg></div></div>
+        <div class="aCell"><div class="aSl"><b>3</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wB"></use></svg></div></div>
+      </div>
+    </div>
+    <div class="aRow aLane">
+      <div class="aLaneHd">RHYTHM<span style="display:flex;gap:3px;margin-left:auto"><button class="aMS on">M</button><button class="aMS">S</button></span></div>
+      <div class="aRegs">
+        <div class="aCell"><div class="aSl" style="opacity:.4"><b>1</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wB"></use></svg></div></div>
+        <div class="aCell"><div class="aSl" style="opacity:.4"><b>2</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wA"></use></svg></div></div>
+        <div class="aCell"><div class="aSl" style="opacity:.4"><b>3</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wB"></use></svg></div></div>
+        <div class="aCell"></div>
+      </div>
+    </div>
+    <div class="aRow aLane">
+      <div class="aLaneHd">PADS<span style="display:flex;gap:3px;margin-left:auto"><button class="aMS">M</button><button class="aMS">S</button></span></div>
+      <div class="aRegs">
+        <div class="aCell"><div class="aSl"><b>1</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wC"></use></svg></div></div>
+        <div class="aCell"><div class="aSl sel" style="margin-left:46.2%"><b>2</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wC"></use></svg></div></div>
+        <div class="aCell"><div class="aSl"><b>3</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wC"></use></svg></div></div>
+        <div class="aCell"></div>
+      </div>
+    </div>
+    <div class="aRow" style="border-bottom:1px solid var(--color-neutral-800)">
+      <div class="aLaneHd">VOCALS<span style="display:flex;gap:3px;margin-left:auto"><button class="aMS">M</button><button class="aMS">S</button></span></div>
+      <div class="aRegs">
+        <div class="aCell"></div>
+        <div class="aCell"><div class="aSl" style="margin-left:15.4%"><b>1</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wC"></use></svg></div></div>
+        <div class="aCell"><div class="aSl"><b>2</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wC"></use></svg></div></div>
+        <div class="aCell"></div>
+      </div>
+    </div>
+    <div style="position:absolute;top:0;bottom:0;left:calc(150px + (100% - 150px) * 0.2963);width:1px;background:var(--color-accent);box-shadow:0 0 6px var(--color-accent)"></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px;padding:7px 14px;font-size:11px;color:var(--color-neutral-400)">
+    <span class="tag tag-accent" style="font-size:10px">PADS &middot; Slice 2</span>
+    <span>Region <b style="color:var(--color-neutral-200);font-weight:500">02 VERSE 1</b> (B2 P2)</span>
+    <span>audio from bar <b style="color:var(--color-neutral-200);font-weight:500">7</b></span>
+    <span>trig step <b class="mono" style="color:var(--color-accent-300);font-weight:500">25</b></span>
+    <span>7 bars</span>
+    <span style="margin-left:auto;color:var(--color-neutral-500)">3 warnings &middot; view table ›</span>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="1b">
+<div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a><b>Hardware unit</b>&nbsp;&mdash; plate gradient, recessed LCD with glow, keys and a knob; Elektron/FabFilter temperament. The app as an instrument.</div>
+<div class="bShell">
+  <div style="display:flex;align-items:center;gap:16px">
+    <div>
+      <div style="font-weight:600;letter-spacing:.22em;font-size:15px;color:var(--color-neutral-200);text-shadow:0 1px 0 rgba(0,0,0,.7)">OSSC</div>
+      <div style="font-size:8.5px;letter-spacing:.18em;color:var(--color-neutral-500)">STEM SLICE STATION</div>
+    </div>
+    <div class="bLcd">SHAKE&nbsp;&nbsp;111.0 BPM&nbsp;&nbsp;REG 02/12&nbsp;&nbsp;B2 P2&nbsp;&nbsp;52/64 &middot; 1/4x&nbsp;&nbsp;MASTER: 0052</div>
+    <div style="display:flex;gap:8px;margin-left:auto;align-items:flex-start">
+      <div><button class="bKey"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 0l8 5-8 5z" fill="currentColor"></path></svg></button><div class="bLabel">Play</div></div>
+      <div><button class="bKey"><svg width="9" height="9" viewBox="0 0 9 9"><rect width="9" height="9" fill="currentColor"></rect></svg></button><div class="bLabel">Stop</div></div>
+      <div><div class="bKnob"><i style="transform:rotate(38deg)"></i></div><div class="bLabel">Level</div></div>
+      <div><div class="bKnob"><i style="transform:rotate(-25deg)"></i></div><div class="bLabel">Zoom</div></div>
+      <div><button class="bKey" style="width:64px;color:var(--color-accent-300)">EXPORT</button><div class="bLabel">&rarr; .wav + .ot</div></div>
+    </div>
+  </div>
+  <div class="bWell">
+    <div style="display:grid;grid-template-columns:150px 1fr;border-bottom:1px solid var(--color-neutral-900)">
+      <div style="border-right:1px solid var(--color-neutral-900)"></div>
+      <div style="display:grid;grid-template-columns:4fr 13fr 8fr 2fr">
+        <div class="bReg"><em>01 INTRO</em><span>B2P1 &middot; 4 &middot; 64/64 &middot; 1x</span></div>
+        <div class="bReg" style="background:color-mix(in srgb,var(--color-accent-900) 35%,transparent)"><em>02 VERSE 1</em><span>B2P2 &middot; 13 &middot; 52/64 &middot; 1/4x</span></div>
+        <div class="bReg"><em>03 CHORUS</em><span>B2P3 &middot; 8 &middot; 64/64 &middot; 1/2x</span></div>
+        <div class="bReg"><em>04 BRK</em><span>B2P4</span></div>
+      </div>
+    </div>
+    <div style="position:relative">
+      <div style="display:grid;grid-template-columns:150px 1fr" class="bLane">
+        <div class="bLaneHd"><span class="bLed"></span>DRUMS<span style="display:flex;gap:3px;margin-left:auto"><button class="aMS">M</button><button class="aMS">S</button></span></div>
+        <div style="display:grid;grid-template-columns:4fr 13fr 8fr 2fr">
+          <div class="bCell"><div class="bSl"><b>1</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wA"></use></svg></div></div>
+          <div class="bCell"><div class="bSl"><b>2</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wA"></use></svg></div></div>
+          <div class="bCell"><div class="bSl"><b>3</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wA"></use></svg></div></div>
+          <div class="bCell"><div class="bSl"><b>4</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wA"></use></svg></div></div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:150px 1fr" class="bLane">
+        <div class="bLaneHd"><span class="bLed"></span>BASS<span style="display:flex;gap:3px;margin-left:auto"><button class="aMS">M</button><button class="aMS">S</button></span></div>
+        <div style="display:grid;grid-template-columns:4fr 13fr 8fr 2fr">
+          <div class="bCell"></div>
+          <div class="bCell"><div class="bSl"><b>1</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wB"></use></svg></div></div>
+          <div class="bCell"><div class="bSl"><b>2</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wB"></use></svg></div></div>
+          <div class="bCell"><div class="bSl"><b>3</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wB"></use></svg></div></div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:150px 1fr" class="bLane">
+        <div class="bLaneHd"><span class="bLed off"></span>RHYTHM<span style="display:flex;gap:3px;margin-left:auto"><button class="aMS on">M</button><button class="aMS">S</button></span></div>
+        <div style="display:grid;grid-template-columns:4fr 13fr 8fr 2fr">
+          <div class="bCell"><div class="bSl" style="opacity:.35"><b>1</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wB"></use></svg></div></div>
+          <div class="bCell"><div class="bSl" style="opacity:.35"><b>2</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wA"></use></svg></div></div>
+          <div class="bCell"><div class="bSl" style="opacity:.35"><b>3</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wB"></use></svg></div></div>
+          <div class="bCell"></div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:150px 1fr" class="bLane">
+        <div class="bLaneHd"><span class="bLed"></span>PADS<span style="display:flex;gap:3px;margin-left:auto"><button class="aMS">M</button><button class="aMS">S</button></span></div>
+        <div style="display:grid;grid-template-columns:4fr 13fr 8fr 2fr">
+          <div class="bCell"><div class="bSl"><b>1</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wC"></use></svg></div></div>
+          <div class="bCell"><div class="bSl sel" style="margin-left:46.2%"><b>2</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wC"></use></svg></div></div>
+          <div class="bCell"><div class="bSl"><b>3</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wC"></use></svg></div></div>
+          <div class="bCell"></div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:150px 1fr">
+        <div class="bLaneHd"><span class="bLed"></span>VOCALS<span style="display:flex;gap:3px;margin-left:auto"><button class="aMS">M</button><button class="aMS">S</button></span></div>
+        <div style="display:grid;grid-template-columns:4fr 13fr 8fr 2fr">
+          <div class="bCell"></div>
+          <div class="bCell"><div class="bSl" style="margin-left:15.4%"><b>1</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wC"></use></svg></div></div>
+          <div class="bCell"><div class="bSl"><b>2</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wC"></use></svg></div></div>
+          <div class="bCell"></div>
+        </div>
+      </div>
+      <div style="position:absolute;top:0;bottom:0;left:calc(150px + (100% - 150px) * 0.2963);width:1px;background:var(--color-accent);box-shadow:0 0 8px var(--color-accent)"></div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px;padding:9px 4px 0;font-size:10.5px;letter-spacing:.06em;color:var(--color-neutral-500);font-family:ui-monospace,Menlo,monospace">
+    <span style="color:var(--color-accent-300)">PADS &middot; SLICE 2</span><span>REG 02 VERSE 1 &middot; B2 P2</span><span>FROM BAR 7</span><span>TRIG STEP 25</span><span style="margin-left:auto">WRN 3</span>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="1c">
+<div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a><b>Focused editorial</b>&nbsp;&mdash; no panel chrome; fading rules, small-caps labels, whitespace. Pure Nocturne; quietest of the three.</div>
+<div class="cShell">
+  <div style="display:flex;align-items:baseline;gap:16px">
+    <h4 style="margin:0;font-size:22px">Shake</h4>
+    <span style="font-size:11.5px;color:var(--color-neutral-500)">5 stems &middot; 27 bars &middot; 12 regions &middot; Banks 2&ndash;3</span>
+    <span class="mono" style="margin-left:auto;font-size:17px;letter-spacing:.06em;color:var(--color-accent-300)">111.0</span>
+    <span style="font-size:9.5px;letter-spacing:.12em;color:var(--color-neutral-500)">BPM</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+    <button class="cGhost"><svg width="12" height="12" viewBox="0 0 10 10"><path d="M1 0l8 5-8 5z" fill="currentColor"></path></svg></button>
+    <button class="cGhost"><svg width="10" height="10" viewBox="0 0 9 9"><rect width="9" height="9" fill="currentColor"></rect></svg></button>
+    <span class="mono" style="font-size:13px;letter-spacing:.08em;color:var(--color-neutral-300)">009.1.1</span>
+    <span style="flex:1"></span>
+    <span style="font-size:9.5px;letter-spacing:.12em;color:var(--color-neutral-500)">TIMELINE</span>
+    <span style="font-size:9.5px;letter-spacing:.12em;color:var(--color-accent-300);border-bottom:1px solid var(--color-accent)">&nbsp;</span>
+    <span style="font-size:9.5px;letter-spacing:.12em;color:var(--color-neutral-600)">TABLE</span>
+    <button class="btn btn-primary" style="padding:4px 14px;font-size:12px;margin-left:14px">Export</button>
+  </div>
+  <hr class="cRule">
+  <div class="cRegRow">
+    <div class="cReg"><em>01 Intro</em><span>B2 P1 &middot; 4 bars &middot; <span class="mono">64/64 &middot; 1x</span></span></div>
+    <div class="cReg"><em style="color:var(--color-accent-300)">02 Verse 1</em><span>B2 P2 &middot; 13 bars &middot; <span class="mono">52/64 &middot; 1/4x</span></span></div>
+    <div class="cReg"><em>03 Chorus</em><span>B2 P3 &middot; 8 bars &middot; <span class="mono">64/64 &middot; 1/2x</span></span></div>
+    <div class="cReg"><em>04 Break</em><span>B2 P4 &middot; 2</span></div>
+  </div>
+  <div style="position:relative;margin-top:10px">
+    <div class="cLane">
+      <div class="cLaneHd">Drums<span style="display:flex;gap:2px;margin-left:auto;margin-right:10px"><button class="cMS">M</button><button class="cMS">S</button></span></div>
+      <div class="cCells">
+        <div class="cCell"><div class="cSl"><b>1</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wA"></use></svg></div></div>
+        <div class="cCell"><div class="cSl"><b>2</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wA"></use></svg></div></div>
+        <div class="cCell"><div class="cSl"><b>3</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wA"></use></svg></div></div>
+        <div class="cCell"><div class="cSl"><b>4</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wA"></use></svg></div></div>
+      </div>
+    </div>
+    <div class="cLane">
+      <div class="cLaneHd">Bass<span style="display:flex;gap:2px;margin-left:auto;margin-right:10px"><button class="cMS">M</button><button class="cMS">S</button></span></div>
+      <div class="cCells">
+        <div class="cCell"></div>
+        <div class="cCell"><div class="cSl"><b>1</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wB"></use></svg></div></div>
+        <div class="cCell"><div class="cSl"><b>2</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wB"></use></svg></div></div>
+        <div class="cCell"><div class="cSl"><b>3</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wB"></use></svg></div></div>
+      </div>
+    </div>
+    <div class="cLane">
+      <div class="cLaneHd" style="opacity:.5">Rhythm<span style="display:flex;gap:2px;margin-left:auto;margin-right:10px"><button class="cMS" style="color:var(--color-accent-300)">M</button><button class="cMS">S</button></span></div>
+      <div class="cCells">
+        <div class="cCell"><div class="cSl" style="opacity:.35"><b>1</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wB"></use></svg></div></div>
+        <div class="cCell"><div class="cSl" style="opacity:.35"><b>2</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wA"></use></svg></div></div>
+        <div class="cCell"><div class="cSl" style="opacity:.35"><b>3</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wB"></use></svg></div></div>
+        <div class="cCell"></div>
+      </div>
+    </div>
+    <div class="cLane">
+      <div class="cLaneHd">Pads<span style="display:flex;gap:2px;margin-left:auto;margin-right:10px"><button class="cMS">M</button><button class="cMS">S</button></span></div>
+      <div class="cCells">
+        <div class="cCell"><div class="cSl"><b>1</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wC"></use></svg></div></div>
+        <div class="cCell"><div class="cSl sel" style="margin-left:46.2%"><b>2</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wC"></use></svg></div></div>
+        <div class="cCell"><div class="cSl"><b>3</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wC"></use></svg></div></div>
+        <div class="cCell"></div>
+      </div>
+    </div>
+    <div class="cLane">
+      <div class="cLaneHd">Vocals<span style="display:flex;gap:2px;margin-left:auto;margin-right:10px"><button class="cMS">M</button><button class="cMS">S</button></span></div>
+      <div class="cCells">
+        <div class="cCell"></div>
+        <div class="cCell"><div class="cSl" style="margin-left:15.4%"><b>1</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wC"></use></svg></div></div>
+        <div class="cCell"><div class="cSl"><b>2</b><svg viewBox="0 0 100 32" preserveAspectRatio="none"><use href="#wC"></use></svg></div></div>
+        <div class="cCell"></div>
+      </div>
+    </div>
+    <div style="position:absolute;top:0;bottom:0;left:calc(120px + (100% - 120px) * 0.2963);width:1px;background:var(--color-accent)"></div>
+  </div>
+  <div style="display:flex;align-items:baseline;gap:14px;margin-top:14px;font-size:11.5px;color:var(--color-neutral-400)">
+    <span style="width:10px;height:2px;background:var(--color-accent);align-self:center"></span>
+    <span style="color:var(--color-neutral-200)">Pads &middot; Slice 2</span>
+    <span>02 Verse 1 (B2 P2) &middot; from bar 7 &middot; trig step <span class="mono" style="color:var(--color-accent-300)">25</span> &middot; 7 bars</span>
+  </div>
+</div>
+</div>
+
+</div>
+<p class="dv-next">Try next: &ldquo;go with <a class="dv-oid" href="#1a">1a</a>&rdquo; &middot; &ldquo;<a class="dv-oid" href="#1c">1c</a> layout with the LCD readout from <a class="dv-oid" href="#1b">1b</a>&rdquo; &middot; &ldquo;show the file-drop screen in this style&rdquo; &mdash; once picked, I build the full working app in that chrome.</p>
+</section>
+</x-dc>
+</body>
+</html>
