@@ -2,13 +2,14 @@
   "name": "ossc",
   "private": true,
   "version": "1.0.0",
-  "description": "OSSC — Octatrack Stem Slice Creator. Turns stems + an arrangement MIDI into a sliced, pattern-programmed Octatrack project.",
+  "description": "OSSC \u2014 Octatrack Stem Slice Creator. Turns stems + an arrangement MIDI into a sliced, pattern-programmed Octatrack project.",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -16,6 +17,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
+    "puppeteer-core": "^23.11.1",
     "vite": "^6.0.0"
   }
 }

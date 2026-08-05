@@ -1,84 +1,270 @@
+<div align="center">
+
 # OSSC — Octatrack Stem Slice Creator
 
-Turn a song's stems + an arrangement MIDI file into a fully prepared **Elektron Octatrack** project: sliced sample chains, `.ot` slice grids, and pattern-programmed bank files — entirely in the browser. Nothing is uploaded; all audio and project data stay client-side.
+**Turn a finished song into a playable Elektron Octatrack project.**
+Drop in your stems and an arrangement MIDI; get back sliced sample chains, `.ot` slice grids,
+and pattern-programmed banks — ready to perform.
 
-**Live app: <https://xuio.github.io/octatrack-exporter/>**
+### ▶ [**Open the app**](https://xuio.github.io/octatrack-exporter/) · runs entirely in your browser, nothing is uploaded
 
-## What it does
+<img src="docs/img/05-timeline.png" alt="OSSC timeline" width="100%">
 
-1. **Files** — drop 5–6 stereo WAV stems (44.1 kHz, 16/24-bit; other formats are converted) plus one MIDI file containing a note at each section start and a final note at the song's end. Drop loose files, a whole folder, or a `.zip` — anywhere on the pane. A synthesized demo song is built in if you just want to try it.
-2. **Tempo** — confirm the session BPM (detected from the MIDI file name or tempo event). Every cut is computed from it.
+</div>
 
-   *Naming* lives in the header and is reachable from every step: the song abbreviation appended to each stem's `.wav`/`.ot`, the stems ZIP name, and the project folder / ZIP name, each with a live preview of the resulting file name.
-3. **Regions** — each MIDI-marked section becomes one Octatrack pattern, starting at Bank 2 (Bank 1 stays free). Section length picks the pattern scale: ≤4 bars → 1x, ≤8 → 1/2x, ≤16 → 1/4x, ≤32 → 1/8x (16/8/4/2 trig keys per bar).
-4. **Results** — a DAW-style timeline: automatic per-measure silence trimming (threshold adjustable live), then edit by hand like a video editor — drag a slice's edges to trim it (bar-quantized, because trigs live on the bar grid), delete slices you don't want, click a dashed placeholder to add one back, and undo/redo any of it (⌘Z / ⇧⌘Z). Edits are audible immediately: trimming while playing re-cues the transport in place. Dragging a clip past a section boundary splits rather than stretches: the clip keeps the part inside its own section and the overhang becomes a separate clip in the neighbouring section, exactly like the ones the initial import produces. Every slice therefore stays inside one section and trigs from that section's own pattern. Also: whole-song overview strip for jumping, draggable playhead, pinch/⌘-scroll zoom with waveform detail that grows as you zoom, follow-the-playhead toggle, dBFS meters with an Ableton-style red zone and 0 dBFS line, triggered oscilloscopes and spectrum analyzers, region looping that can be released without interrupting playback, exclusive solo (shift-click to solo several tracks), resizable track column and track heights, and seven colour schemes.
-5. **Export** — per-stem WAV chains (one slice per region, silence removed) + 832-byte `.ot` sidecars with the slice grid, as single files or one ZIP.
-6. **Project builder** — drop (or pick) a default project folder saved from your Octatrack, or a `.zip` of one, and get back a ready-to-play copy under a name you choose:
-   - stem WAVs + `.ot` files placed **inside the project folder**
-   - `project.work`: Static slots 1–N assigned (timestretch off, trig quantize direct) and the **project tempo** set to the song BPM
-   - `markers.work`: trim + slice grid written per slot (so slices appear without reloading samples)
-   - `bank02+.work`: one sample trig per stem/region with the slice p-locked via STRT (no sample locks — tracks play their TRK DEFAULT sample), per-track scale with **master length INF** at master scale 1x, checksums recomputed
-   - parts/scenes are never touched — byte-identity of the part region is verified after every bank write; on any structural mismatch the bank is copied unchanged
-   - a printable `PATTERNS.html` sheet documents everything (and doubles as the manual fallback)
+---
 
-   One-time step on the device afterwards: assign a STATIC machine on each used track and set its default sample (TRK DEFAULT) to the matching slot.
+## The paradigm
+
+A finished track is frozen. The Octatrack can take it apart again — but only if the song arrives
+in the shape the machine thinks in: **audio tracks, patterns, slices, and trigs**. OSSC performs
+exactly that translation, and nothing else.
+
+The whole tool rests on one mapping:
+
+| In your song | On the Octatrack |
+| --- | --- |
+| A stem (drums, bass, pads…) | One **audio track** with one Static sample slot |
+| An arrangement section (intro, verse, chorus…) | One **pattern**, numbered from Bank 2 |
+| What a stem plays *during* one section | One **slice** inside that track's sample chain |
+| The moment a section begins | One **sample trig**, on the step matching that bar |
+
+```mermaid
+flowchart LR
+  S["Stems<br/>DRUMS · BASS · PADS · …"] --> O(("OSSC"))
+  M["Arrangement MIDI<br/>one note per section start"] --> O
+  O --> W["One WAV chain per stem<br/>+ .ot slice grid"]
+  O --> P["project.work<br/>Static slots 1–N"]
+  O --> B["bank02+.work<br/>patterns · trigs · slice p-locks"]
+```
+
+**Why chains instead of one file per section.** An Octatrack track plays one sample at a time.
+So each stem becomes a *single* WAV holding that stem's every section back to back, and the slice
+grid marks where each section starts. A trig with a `STRT` parameter lock says *which* section to
+play. Five stems across seven sections is therefore five files — not thirty-five — and pattern 3
+simply trigs slice 3 on every track at once.
+
+**Why everything snaps to bars.** Trigs live on a step grid, so a slice has to begin on a bar or
+the trig can't land on it. Section length picks the pattern scale, and the scale decides how many
+trig keys one bar is worth:
+
+| Section length | Scale (TEMPO MULTIPLIER) | Trig keys per bar |
+| --- | --- | --- |
+| ≤ 4 bars | 1x | 16 |
+| ≤ 8 bars | 1/2x | 8 |
+| ≤ 16 bars | 1/4x | 4 |
+| ≤ 32 bars | 1/8x | 2 |
+
+A section beginning on bar 5 of a 1/4× pattern therefore trigs on step 17. Patterns run in **PER
+TRACK** scale mode with **MASTER LENGTH = INF**, so each track loops on its own length and you
+change sections when *you* decide to.
+
+**Silence is information.** If a stem plays nothing during a section it gets no slice, so that
+pattern has no trig for it and the track simply stays quiet. Your arrangement's dynamics survive
+the translation for free — that is what the loudness threshold on the timeline is deciding.
+
+**What you get back** is not a rendering of your song. It is your song as material: reorder the
+sections, loop the chorus, drop the drums, morph a scene, and the audio is still the mix you
+bounced — sample-for-sample, at the level you left it.
+
+#### Limits worth knowing up front
+
+- 8 audio tracks → up to 8 stems.
+- 64 slices per sample → up to 64 sections.
+- Sections longer than 32 bars can't be one pattern; split them in the MIDI.
+- Patterns are written from **Bank 2** onward. Bank 1 is left alone for your own intro.
+
+---
+
+## Tutorial
+
+### What you need
+
+- **Stems** — 5–6 stereo WAVs, all starting at bar 1 and all the same length (44.1 kHz, 16/24-bit
+  is copied untouched; other formats are converted). Drop loose files, a folder, or a `.zip`.
+- **An arrangement MIDI** — one note at each section start, plus one final note marking the end of
+  the song. Seven sections means eight notes. Nothing else in the file matters.
+- Optionally, **a project folder saved from your Octatrack**, if you want OSSC to build the whole
+  project for you.
+
+> No files to hand? Click **Shake · 111** on the first screen — a complete demo song is synthesized
+> in your browser and runs through the identical pipeline.
+
+### 1 · Load the stems
+
+<img src="docs/img/02-files-loaded.png" alt="Files step" width="100%">
+
+Drag your files anywhere onto the pane. Each stem becomes a row; the order here becomes the
+Octatrack **track order**, so drag them into the order you want with the ▲▼ buttons. Rename a stem
+by typing in its field — that name ends up in the exported file names.
+
+### 2 · Confirm the tempo
+
+<img src="docs/img/03-tempo.png" alt="Tempo step" width="100%">
+
+Every cut is derived from this BPM, cumulatively from the start of the song, so it has to match the
+session the stems came from. OSSC guesses from the MIDI file name, then from a tempo event.
+
+### 3 · Check the sections
+
+<img src="docs/img/04-regions.png" alt="Regions step" width="100%">
+
+Each MIDI note pair becomes a section, and each section is assigned its pattern (`B2 P1`, `B2 P2`,
+…) and its scale. Name them if you like — the names follow through to the timeline, the printable
+sheet and the pattern table. Then hit **Analyze stems**.
+
+### 4 · Shape the slices
+
+<img src="docs/img/06-slice-selected.png" alt="Timeline with a slice selected" width="100%">
+
+This is where the work happens. OSSC has already trimmed each section down to where that stem is
+actually audible; everything else is you refining it:
+
+| | |
+| --- | --- |
+| **Threshold** | Raise it to drop quiet tails, lower it to keep them. Every slice re-trims live. |
+| **Drag a slice edge** | Trim it, quantized to bars. Drag past a section boundary and the overhang becomes its **own clip in the next section** — the same shape the import would have made. |
+| **Delete / dashed blocks** | Remove a slice, or click the dashed placeholder to bring one back. |
+| **⌘Z / ⇧⌘Z** | Undo and redo, one entry per drag. |
+| **Double-click** | Rename a track or a section right in the timeline. |
+| **Space, ruler, overview strip** | Play/stop, scrub, and jump anywhere in the song. |
+| **⟳ on a section** | Loop it. Releasing the loop keeps playing rather than stopping. |
+| **Pinch / ⌘-scroll** | Zoom; waveform detail grows as you go in. |
+
+Everything you change is audible immediately — trims, deletes, undo and threshold moves all re-cue
+the transport where it is playing.
+
+<img src="docs/img/07-playing.png" alt="Playback with scopes and meters" width="100%">
+
+Per-track meters are dBFS with a red zone above −3 dB and a hard line at 0; the scopes and spectrum
+analyzers are there to check what a slice actually contains. The **VOL** slider is monitoring only —
+it never touches the exported audio.
+
+Switch to **Table** for the pattern map: which slice each track trigs in each pattern, and on which
+step.
+
+<img src="docs/img/08-table.png" alt="Pattern table" width="100%">
+
+### 5 · Export the stems
+
+<img src="docs/img/09-export.png" alt="Export step" width="100%">
+
+Each stem becomes a `.wav` chain plus an 832-byte `.ot` sidecar carrying its slice grid. Download
+them individually or as one ZIP — name it whatever you like (naming is reachable from the header on
+every step). This alone is enough if you prefer to assign the slots on the device yourself.
+
+### 6 · Or let OSSC build the whole project
+
+Drop a project folder saved from your Octatrack — or a `.zip` of one — onto the **Project** step,
+and you get back a complete copy under a name of your choosing:
+
+- stem WAVs and `.ot` files placed **inside the project folder**
+- `project.work` — Static slots 1–N assigned, project tempo set, timestretch off, gain at unity
+- `markers.work` — trim and slice grid per slot, so slices show up without reloading samples
+- `bank02+.work` — one sample trig per stem per section, with the slice p-locked via `STRT`, the
+  per-track scale set, and `MASTER LENGTH = INF`
+- `PATTERNS.html` — a printable sheet of everything that was written
+
+**Your parts and scenes are never rewritten.** Bank offsets are verified against your own file
+before a byte is written, and the part region — where scenes live — is checked byte-identical
+afterwards. On any mismatch that bank is copied through untouched and the sheet tells you so.
+
+**One step remains on the device:** on each used track, assign a **STATIC** machine and set its
+default sample (**TRK DEFAULT**) to the matching slot. Trigs carry no sample locks, so that is all
+it takes. Then hit play on `B2 P1`.
+
+---
+
+## Themes
+
+Seven schemes, generated from OKLCH ramps so contrast holds up in every one.
+
+| Cobalt | Ember | Paper |
+| --- | --- | --- |
+| <img src="docs/img/10-theme-cobalt.png" alt="Cobalt theme"> | <img src="docs/img/10-theme-ember.png" alt="Ember theme"> | <img src="docs/img/10-theme-paper.png" alt="Paper theme"> |
+
+---
+
+## Audio integrity
+
+OSSC never changes level. Stems that are already 44.1 kHz stereo 16/24-bit are copied
+**byte-for-byte** into the exported chain — no normalization, gain staging, dithering or
+compression anywhere in the path. Conversion happens only for formats the Octatrack cannot load
+(other sample rates, mono, 32-bit float), and is a straight format conversion.
+
+Every gain the device reads is unity, so the sample's ATTRIBUTES page shows **GAIN +0.0 dB**:
+`GAIN=48` on each Static slot and gain `48` (a `u16` at offset 43) in the `.ot` sidecar — 48 being
+the 0 dB point of the 0–96 = −24…+24 dB range — with timestretch off so nothing is resampled on
+playback.
+
+[`tests/audio-integrity.test.js`](tests/audio-integrity.test.js) asserts all of it, including
+sample-exact equality between source and export.
+
+---
 
 ## Development
 
 ```bash
 npm install
-npm run dev       # local dev server
-npm test          # binary-writer tests (node --test, no browser needed)
-npm run build     # production build to dist/
+npm run dev        # dev server
+npm test           # binary-writer + slice-logic tests (node --test, no browser)
+npm run build      # production build → dist/
 ```
 
-Pushing to `main` runs tests, builds, and deploys to GitHub Pages via `.github/workflows/pages.yml`.
+Pushing to `main` runs the tests, builds, and deploys to GitHub Pages
+([`.github/workflows/pages.yml`](.github/workflows/pages.yml)).
+The README screenshots are regenerated with `node scripts/screenshots.mjs` against a running
+`npm run preview`.
 
-## Project structure
+### Project structure
 
 ```
 src/
   main.jsx               entry point
-  App.jsx                application state, audio engine (Web Audio), view model
-  components/            presentational components, one per step
-    Header.jsx           step navigation
-    FilesStep.jsx        stem/MIDI intake + demo loader
-    TempoStep.jsx        BPM confirmation
-    RegionsStep.jsx      region → pattern table
-    ResultsStep.jsx      transport, timeline, table view
-    ExportStep.jsx       per-stem WAV/.ot downloads + ZIP
-    ProjectStep.jsx      project-folder builder
-  lib/                   pure, DOM-free core (unit-testable in Node)
-    constants.js         sample rate + tempo math
-    wav.js               WAV parse/encode (+conversion to 44.1k stereo)
-    midi.js              MIDI parse, regions, pattern scale rules
-    analysis.js          per-measure peaks, silence trim, waveform paths
-    slices.js            slice building: auto-trim + manual trim/delete edits
-    unzip.js             ZIP reading for archive uploads
-    dnd.js               drag-and-drop intake (files, folders, archives)
-    meters.js            dBFS meter scaling
-    otFile.js            .ot sidecar writer
-    zip.js               store-only ZIP + CSV
-    projectFile.js       project.work parse/write (slots + tempo)
-    bankFile.js          bank??.work pattern writer (trigs, p-locks, scales)
-    markersFile.js       markers.work writer (slot trim + slice grids)
-    demo.js              demo song synthesis
-  styles/
-    tokens.css           Nocturne design tokens + component classes
-    themes.css           colour schemes (OKLCH ramps generated per theme)
-    app.css              app-level styles
-tests/                   node --test suite for the binary writers
+  App.jsx                state, Web Audio engine, view model
+  components/            one component per step
+    Header.jsx             step nav, naming panel, theme picker
+    FilesStep.jsx          stem/MIDI intake + demo loader
+    TempoStep.jsx          BPM confirmation
+    RegionsStep.jsx        section → pattern table
+    ResultsStep.jsx        transport, timeline, slice editing, table view
+    ExportStep.jsx         per-stem downloads + ZIP
+    ProjectStep.jsx        project-folder builder
+  lib/                   pure, DOM-free core — unit-testable in Node
+    constants.js           sample rate + tempo math
+    wav.js                 WAV parse/encode
+    midi.js                MIDI parse, sections, pattern scale rules
+    analysis.js            per-measure peaks, silence trim, waveform data
+    slices.js              slice building, manual trims, boundary splitting
+    otFile.js              .ot sidecar writer
+    bankFile.js            bank??.work pattern writer
+    markersFile.js         markers.work writer
+    projectFile.js         project.work parse/write
+    zip.js / unzip.js      archive writing and reading
+    dnd.js                 drag-and-drop intake
+    meters.js              dBFS meter scaling
+    demo.js                demo song synthesis
+  styles/                design tokens, themes, app styles
+tests/                   node --test suite
 docs/
-  notes-formats.md       Octatrack file-format notes (incl. device-verified corrections)
+  notes-formats.md       Octatrack file-format notes, incl. device-verified corrections
   OSSC_Specification_2_6.md   original product spec
+scripts/screenshots.mjs  regenerates the images in this README
 ```
 
-## Audio integrity
+---
 
-OSSC never changes level. Stems that are already 44.1 kHz stereo 16/24-bit are copied **byte-for-byte** into the exported chain — no normalization, gain staging, dithering or compression anywhere in the path; conversion only happens for formats the Octatrack can't load (other sample rates, mono, 32-bit float), and even then it is a straight format conversion. Every gain the device reads is unity, so the sample's ATTRIBUTES page shows **GAIN +0.0 dB**: `GAIN=48` on each Static slot and gain 48 (a `u16` at offset 43) in the `.ot` sidecar — 48 is the 0 dB point of the 0–96 = −24…+24 dB range — with timestretch off so nothing is resampled on playback. The VOL slider is monitoring only and never reaches the exported files. [tests/audio-integrity.test.js](tests/audio-integrity.test.js) asserts all of this, including sample-exact equality between source and export.
+## File formats, credits & caveats
 
-## File-format credits & caveats
+Binary layouts for `bank??.work` and `markers.work` are based on format **facts** documented by
+[ot-tools-io](https://gitlab.com/ot-tools/ot-tools) (GPL v3 — no code ported), and the `.ot` layout
+on [OctaChainer](https://github.com/KaiDrange/OctaChainer). Several details were corrected through
+on-device verification and are recorded in [`docs/notes-formats.md`](docs/notes-formats.md) — most
+importantly the trig-mask byte order (the published note is wrong for pages 2–4) and the fact that
+the slice p-lock stores a 0–127 `STRT` knob value at two ticks per slice.
 
-Binary layouts for `bank??.work` / `markers.work` are based on format **facts** documented by [ot-tools-io](https://gitlab.com/ot-tools/ot-tools) (GPL v3 — no code ported) and the `.ot` layout on [OctaChainer](https://github.com/KaiDrange/OctaChainer); several details were corrected through on-device verification and are recorded in [docs/notes-formats.md](docs/notes-formats.md) — notably the trig-mask byte order and the STRT-knob slice encoding. Verified against **Octatrack OS 1.40** (bank data v23, markers v4) only; the writers refuse to touch files whose structure doesn't match. Always keep a backup of your CF card and verify the first generated project on the device.
+Verified against **Octatrack OS 1.40** (bank data version 23, markers version 4) only. The writers
+refuse to touch files whose structure doesn't match. Keep a backup of your CF card and check the
+first generated project on the device before trusting it with a gig.
 
 Not affiliated with Elektron. Octatrack is a trademark of Elektron Music Machines.
