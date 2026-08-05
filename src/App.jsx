@@ -42,7 +42,7 @@ export default class App extends React.Component {
 
   core = core;
   ids = 1; sources = []; buffers = {}; gains = {}; blobCache = {}; analysers = {}; meterEls = {}; scopeEls = {}; envs = {};
-  bandCache = new Map(); pathCache = new Map();
+  bandCache = new Map(); pathCache = new Map(); barCache = new Map();
 
   componentDidMount() {
     this.meterRaf = requestAnimationFrame(this.meterTick);
@@ -384,7 +384,7 @@ export default class App extends React.Component {
     if ((this.state.regionsMeta.snapped || 0) > 0) warnings.push(this.state.regionsMeta.snapped + ' MIDI note(s) were not exactly on a bar line — snapped to the nearest measure.');
     if (regs.length > 32) warnings.push(regs.length + ' regions — patterns roll on past Bank 3 (' + core.bankPattern(regs.length).bp + ' last).');
     const fitPpm = Math.max(5, Math.min(30, Math.floor((window.innerWidth - 200) / total)));
-    this.bandCache.clear(); this.pathCache.clear();
+    this.bandCache.clear(); this.pathCache.clear(); this.barCache.clear();
     this.setState({ analyzing: false, analysis: { bounds, total, regs, stemData, warnings, v: Date.now() }, step: 'results', ppm: fitPpm, sel: null, startMeasure: 1, loopRegionIdx: null });
     this.blobCache = {}; this.buffers = {};
   };
@@ -740,17 +740,41 @@ export default class App extends React.Component {
     if (!this.state.viewW) this.setState({ viewW: el.clientWidth });
   };
 
-  // ---------- waveform cache ----------
-  bandsFor(stem, sl, buckets) {
-    const k = stem.id + ':' + sl.aM + ':' + sl.bM + ':' + buckets;
-    let b = this.bandCache.get(k);
-    if (!b) { if (this.bandCache.size > 400) this.bandCache.clear(); b = core.waveBands(stem.chL, stem.chR, sl.start, sl.end, buckets); this.bandCache.set(k, b); }
+  // ---------- waveform cache (bar-anchored) ----------
+  // One bar of a stem always yields the same buckets, so trimming a clip reuses
+  // every bar it still covers — nothing is recomputed and the drawing does not
+  // shift under the cursor while dragging.
+  barBandsFor(stem, bar, bpb) {
+    const k = stem.id + ':' + bar + ':' + bpb;
+    let b = this.barCache.get(k);
+    if (!b) {
+      if (this.barCache.size > 4000) this.barCache.clear();
+      const bounds = this.state.analysis.bounds;
+      b = core.barBands(stem.chL, stem.chR, bounds[bar], bounds[bar + 1], bpb);
+      this.barCache.set(k, b);
+    }
     return b;
   }
-  pathsFor(stem, sl, buckets, style) {
-    const k = stem.id + ':' + sl.aM + ':' + sl.bM + ':' + buckets + ':' + style;
+  bandsFor(stem, sl, bpb) {
+    const k = stem.id + ':' + sl.aM + ':' + sl.bM + ':' + bpb;
+    let cat = this.bandCache.get(k);
+    if (!cat) {
+      if (this.bandCache.size > 600) this.bandCache.clear();
+      const bars = sl.bM - sl.aM + 1, n = bars * bpb;
+      cat = { min: new Float32Array(n), max: new Float32Array(n), rms: new Float32Array(n), low: new Float32Array(n), high: new Float32Array(n), n };
+      for (let i = 0; i < bars; i++) {
+        const b = this.barBandsFor(stem, sl.aM + i, bpb), off = i * bpb;
+        cat.min.set(b.min, off); cat.max.set(b.max, off); cat.rms.set(b.rms, off);
+        cat.low.set(b.low, off); cat.high.set(b.high, off);
+      }
+      this.bandCache.set(k, cat);
+    }
+    return cat;
+  }
+  pathsFor(stem, sl, bpb, style) {
+    const k = stem.id + ':' + sl.aM + ':' + sl.bM + ':' + bpb + ':' + style;
     let p = this.pathCache.get(k);
-    if (!p) { if (this.pathCache.size > 400) this.pathCache.clear(); p = core.wavePaths(this.bandsFor(stem, sl, buckets), style, 32); this.pathCache.set(k, p); }
+    if (!p) { if (this.pathCache.size > 600) this.pathCache.clear(); p = core.wavePaths(this.bandsFor(stem, sl, bpb), style, 32); this.pathCache.set(k, p); }
     return p;
   }
 
@@ -955,6 +979,28 @@ export default class App extends React.Component {
     if (items.length) await this.loadProject(items);
   };
 
+  // ---------- inline renaming ----------
+  renameStem = (id, name) => {
+    const v = (name || '').toUpperCase().slice(0, 20).trim();
+    if (!v) return;
+    this.setState({ stems: this.state.stems.map(s => s.id === id ? { ...s, name: v } : s) });
+  };
+  // Regions are referenced from three places (the editable list, the analysis
+  // copy, and each slice), so all of them are refreshed together.
+  renameRegion = (idx, name) => {
+    const v = (name || '').slice(0, 40);
+    const regions = (this.state.regions || []).map(r => r.idx === idx ? { ...r, name: v } : r);
+    const a = this.state.analysis;
+    if (!a) { this.setState({ regions }); return; }
+    const regs = a.regs.map(r => r.idx === idx ? { ...r, name: v } : r);
+    const byIdx = new Map(regs.map(r => [r.idx, r]));
+    a.stemData.forEach(sd => sd.slices.forEach(sl => {
+      sl.region = byIdx.get(sl.region.idx) || sl.region;
+      if (sl.trigRegion) sl.trigRegion = byIdx.get(sl.trigRegion.idx) || sl.trigRegion;
+    }));
+    this.setState({ regions, analysis: { ...a, regs, v: Date.now() } });
+  };
+
   // ---------- resizing ----------
   startResize = (axis, e) => {
     e.preventDefault(); e.stopPropagation();
@@ -1112,6 +1158,8 @@ export default class App extends React.Component {
         const looped = S.loopRegionIdx === r.idx;
         return {
           left: r.start * ppm, width: r.len * ppm,
+          num: String(r.idx).padStart(2, '0'), name: (r.name || '').toUpperCase(),
+          onRename: (v) => this.renameRegion(r.idx, v),
           title: String(r.idx).padStart(2, '0') + ' ' + (r.name || '').toUpperCase(),
           sub: r.bp + ' · ' + r.len + ' · ' + r.scale.label,
           bg: looped ? 'color-mix(in srgb,var(--color-accent-900) 70%,transparent)' : r.idx === selRegionIdx ? 'color-mix(in srgb,var(--color-accent-900) 45%,transparent)' : 'transparent',
@@ -1165,11 +1213,13 @@ export default class App extends React.Component {
       };
       // lanes
       const visA = (S.scrollX / ppm) - 2, visB = ((S.scrollX + (S.viewW || 1200)) / ppm) + 2;
+      const bpb = core.bucketsPerBarFor(ppm);
       vals.lanes = S.stems.map(stem => {
         const sd = a.stemData.find(x => x.id === stem.id);
         const anySolo = S.stems.some(x => x.solo);
         return {
           id: stem.id, name: stem.name, mCls: stem.muted ? 'on' : '', sCls: stem.solo ? 'on' : '',
+          onRename: (v) => this.renameStem(stem.id, v),
           meterRef: el => { if (el) this.meterEls[stem.id] = el; },
           scopeRef: el => { if (el) this.scopeEls[stem.id] = el; },
           op: (anySolo ? stem.solo : !stem.muted) ? 1 : 0.35,
@@ -1190,14 +1240,17 @@ export default class App extends React.Component {
             const isSel = selKey === stem.id + ':' + sl.region.idx;
             const bars = sl.bM - sl.aM + 1, px = bars * ppm;
             const visible = sl.bM + 1 >= visA && sl.aM <= visB;
-            const P = visible ? this.pathsFor(stem, sl, core.bucketTier(px), S.waveStyle) : null;
-            const F = S.waveStyle === 'band' ? ['var(--color-accent-500)', 'none', 'none', 0.92]
-              : S.waveStyle === 'bars' ? ['var(--color-accent-500)', 'none', 'var(--color-neutral-100)', 1]
-              : ['var(--color-accent-400)', 'var(--color-accent-800)', 'var(--color-neutral-100)', 1];
+            const P = visible ? this.pathsFor(stem, sl, bpb, S.waveStyle) : null;
+            // outer peak envelope sits darker, the body core brighter — the
+            // classic two-tone DAW waveform. [fill1, fill2, fill3, op1, op2, op3]
+            const F = S.waveStyle === 'band' ? ['var(--color-accent-600)', 'var(--color-accent-300)', 'none', 0.95, 1, 0]
+              : S.waveStyle === 'bars' ? ['var(--color-accent-400)', 'none', 'var(--color-accent-200)', 1, 0, 0.8]
+              : ['var(--color-accent-600)', 'var(--color-accent-300)', 'var(--color-accent-100)', 0.95, 0.95, 0.35];
             return {
               key: sl.region.idx, num: sl.num, left: sl.aM * ppm, width: Math.max(3, px - 2), edited: sl.edited,
-              vb: '0 0 ' + core.bucketTier(px) + ' 32', hasWave: !!P,
-              p1: P ? P.p1 : '', p2: P ? P.p2 : '', p3: P ? P.p3 : '', f1: F[0], f2: F[1], f3: F[2], o1: F[3],
+              vb: '0 0 ' + (bars * bpb) + ' 32', hasWave: !!P,
+              p1: P ? P.p1 : '', p2: P ? P.p2 : '', p3: P ? P.p3 : '',
+              f1: F[0], f2: F[1], f3: F[2], o1: F[3], o2: F[4], o3: F[5],
               border: isSel ? 'var(--color-accent-400)' : 'var(--color-accent-700)',
               glow: isSel ? '0 0 0 1px var(--color-accent-400), 0 0 10px color-mix(in srgb,var(--color-accent) 35%,transparent)' : 'none',
               tip: stem.name + ' slice ' + sl.num + ' · bars ' + (sl.aM + 1) + '–' + (sl.bM + 1) + (sl.edited ? ' (trimmed)' : '') + ' — drag the edges to trim, double-click to audition',

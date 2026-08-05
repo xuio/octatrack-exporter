@@ -1,5 +1,9 @@
-// Per-measure peak analysis (for silence trimming) and waveform rendering
-// (Pioneer-style band/spectral/bars paths for the timeline slice blocks).
+// Per-measure peak analysis (for silence trimming) and waveform rendering.
+//
+// Waveform buckets are anchored to BARS, not to a slice's current extent: a bar
+// always produces the same buckets covering the same audio, so trimming a slice
+// just adds or drops whole bars of already-computed data. That keeps the drawing
+// perfectly still while a clip is dragged, and makes every bar cacheable.
 
 export function measurePeaks(chL, chR, bounds) {
   const n = bounds.length - 1, peaks = new Float32Array(n);
@@ -20,55 +24,87 @@ export function trimRegion(peaks, start, end, thLin) {
   return { a, b };
 }
 
-// Waveform detail follows zoom: pick a power-of-two bucket count near the slice's
-// on-screen width, so paths stay cacheable across small zoom steps.
-export function bucketTier(px) {
-  const want = Math.max(32, Math.min(2048, px));
-  return Math.max(64, Math.min(2048, Math.pow(2, Math.round(Math.log2(want)))));
+// Buckets per bar for the current zoom — a power of two so the grid only changes
+// on large zoom steps and cached bars stay valid across small ones.
+export function bucketsPerBarFor(pxPerBar) {
+  const want = Math.max(4, Math.min(512, pxPerBar / 1.5));
+  return Math.pow(2, Math.round(Math.log2(want)));
 }
 
-export function waveBands(chL, chR, s0, s1, buckets) {
-  const n = Math.max(2, buckets), len = s1 - s0;
-  const peak = new Float32Array(n), low = new Float32Array(n), high = new Float32Array(n);
-  for (let k = 0; k < n; k++) {
-    const a = s0 + Math.floor(k * len / n), b = Math.max(a + 1, s0 + Math.floor((k + 1) * len / n));
-    // peak over the bucket (strided is fine for a max)
-    const step = Math.max(1, Math.floor((b - a) / 48));
-    let pk = 0;
-    for (let i = a; i < b; i += step) { const ax = Math.abs((chL[i] + chR[i]) * 0.5); if (ax > pk) pk = ax; }
-    // band metrics over a short CONTIGUOUS run so lp/prev see adjacent samples
-    const runLen = Math.min(192, b - a), r0 = a + ((b - a - runLen) >> 1);
-    let lp = (chL[r0] + chR[r0]) * 0.5, prev = lp, lo = 0, hi = 0;
-    for (let i = r0; i < r0 + runLen; i++) {
-      const x = (chL[i] + chR[i]) * 0.5;
-      lp += 0.055 * (x - lp); // one-pole LP ≈ 400 Hz at 44.1k
-      lo += Math.abs(lp); hi += Math.abs(x - prev); prev = x;
+// One bar of waveform data: true signed min/max (so the drawing is asymmetric
+// like a real waveform), RMS for the body, plus rough low/high band energy.
+export function barBands(chL, chR, s0, s1, buckets) {
+  const min = new Float32Array(buckets), max = new Float32Array(buckets);
+  const rms = new Float32Array(buckets), low = new Float32Array(buckets), high = new Float32Array(buckets);
+  const len = Math.max(1, s1 - s0), per = len / buckets;
+  const stride = Math.max(1, Math.floor(per / 256));
+  const lpC = Math.min(0.9, 0.055 * stride); // one-pole LP ≈ 400 Hz, compensated for striding
+  let lp = 0, prev = 0, primed = false;
+  for (let k = 0; k < buckets; k++) {
+    const a = s0 + Math.floor(k * per), b = Math.max(a + 1, s0 + Math.floor((k + 1) * per));
+    let mn = 1, mx = -1, sq = 0, lo = 0, hi = 0, n = 0;
+    for (let i = a; i < b && i < chL.length; i += stride) {
+      const v = (chL[i] + chR[i]) * 0.5;
+      if (!primed) { lp = v; prev = v; primed = true; }
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
+      sq += v * v;
+      lp += lpC * (v - lp);
+      lo += Math.abs(lp); hi += Math.abs(v - prev); prev = v;
+      n++;
     }
-    const pkN = Math.min(1, Math.pow(pk, 0.7));
-    peak[k] = pkN;
-    low[k] = Math.min(pkN, Math.pow(lo / runLen * 2.2, 0.7));
-    high[k] = Math.min(pkN, Math.pow(hi / runLen * 3.5, 0.7));
+    if (!n) { min[k] = 0; max[k] = 0; continue; }
+    min[k] = Math.min(0, mn); max[k] = Math.max(0, mx);
+    rms[k] = Math.sqrt(sq / n);
+    low[k] = lo / n; high[k] = hi / n;
   }
-  return { peak, low, high, n };
+  return { min, max, rms, low, high, n: buckets };
 }
 
-function envPath(vals, n, H, scale) {
-  const mid = H / 2, amp = H / 2;
-  let top = '', bot = '';
-  for (let k = 0; k < n; k++) { const v = Math.min(1, vals[k] * scale) * amp; top += ' ' + k + ',' + (mid - v).toFixed(1); bot = ' ' + k + ',' + (mid + v).toFixed(1) + bot; }
-  return 'M0,' + mid + ' L' + top + ' L' + (n - 1) + ',' + mid + ' L' + bot + ' Z';
+// Perceptual lift for true sample peaks only. Averaged values (RMS, band
+// energies) are already much smaller than peaks and are scaled linearly —
+// running them through the same curve is what turns sustained material into a
+// solid block.
+const lift = v => Math.min(1, Math.pow(Math.abs(v), 0.72));
+const P = (v) => (Math.round(v * 10) / 10);
+
+function envelopePath(top, bot, n, H) {
+  const mid = H / 2, amp = H / 2 - 0.5;
+  let up = '', down = '';
+  for (let k = 0; k < n; k++) {
+    up += ' ' + k + ',' + P(mid - lift(top[k]) * amp);
+    down = ' ' + k + ',' + P(mid + lift(bot[k]) * amp) + down;
+  }
+  return 'M0,' + mid + ' L' + up + ' L' + (n - 1) + ',' + mid + ' L' + down + ' Z';
 }
 
-function barsPath(vals, n, H, scale) {
-  const mid = H / 2, amp = H / 2;
+function symPath(vals, n, H, gain) {
+  const mid = H / 2, amp = H / 2 - 0.5;
+  let up = '', down = '';
+  for (let k = 0; k < n; k++) {
+    const v = Math.min(1, vals[k] * gain) * amp;
+    up += ' ' + k + ',' + P(mid - v);
+    down = ' ' + k + ',' + P(mid + v) + down;
+  }
+  return 'M0,' + mid + ' L' + up + ' L' + (n - 1) + ',' + mid + ' L' + down + ' Z';
+}
+
+function barsPath(min, max, n, H) {
+  const mid = H / 2, amp = H / 2 - 0.5;
   let d = '';
-  for (let k = 0; k < n; k++) { const v = Math.max(0.02, Math.min(1, vals[k] * scale)) * amp; d += 'M' + k + ',' + (mid - v).toFixed(1) + 'h0.62v' + (2 * v).toFixed(1) + 'h-0.62Z'; }
+  for (let k = 0; k < n; k++) {
+    const t = mid - Math.min(1, lift(max[k])) * amp, b = mid + Math.min(1, lift(min[k])) * amp;
+    const h = Math.max(0.8, b - t);
+    d += 'M' + k + ',' + P(t) + 'h0.6v' + P(h) + 'h-0.6Z';
+  }
   return d;
 }
 
+// p1 = peak envelope (outer shape), p2 = body, p3 = highlight
 export function wavePaths(bands, style, H) {
-  const { peak, low, high, n } = bands;
-  if (style === 'bars') return { p1: barsPath(peak, n, H, 1), p2: '', p3: barsPath(high, n, H, 0.55) };
-  if (style === 'band') return { p1: envPath(peak, n, H, 1), p2: '', p3: '' };
-  return { p1: envPath(peak, n, H, 1), p2: envPath(low, n, H, 0.95), p3: envPath(high, n, H, 0.65) }; // spectral
+  const { min, max, rms, low, high, n } = bands;
+  if (style === 'bars') return { p1: barsPath(min, max, n, H), p2: '', p3: symPath(rms, n, H, 1.5) };
+  if (style === 'band') return { p1: envelopePath(max, min, n, H), p2: symPath(rms, n, H, 1.5), p3: '' };
+  // spectral: peak outline, low-band core, high-frequency sheen
+  return { p1: envelopePath(max, min, n, H), p2: symPath(low, n, H, 1.7), p3: symPath(high, n, H, 1.4) };
 }

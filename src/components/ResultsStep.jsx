@@ -1,3 +1,36 @@
+import { useState, useEffect, useRef } from 'react';
+
+// Double-click to rename, Enter/blur to commit, Escape to cancel.
+function EditableLabel({ value, placeholder, onCommit, className, style, title }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const ref = useRef(null);
+  useEffect(() => { if (!editing) setDraft(value); }, [value, editing]);
+  useEffect(() => { if (editing && ref.current) { ref.current.focus(); ref.current.select(); } }, [editing]);
+  const stop = e => e.stopPropagation();
+  if (!editing) {
+    return (
+      <span className={className} style={{ ...style, cursor: 'text' }} title={title || 'Double-click to rename'}
+        onDoubleClick={e => { stop(e); setEditing(true); }}>
+        {value || <span style={{ opacity: 0.5 }}>{placeholder}</span>}
+      </span>
+    );
+  }
+  return (
+    <input ref={ref} className="input" value={draft} onClick={stop} onDoubleClick={stop} onPointerDown={stop}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={() => { setEditing(false); if (draft !== value) onCommit(draft); }}
+      onKeyDown={e => {
+        stop(e);
+        // blur through the ref: currentTarget is not reliable here once the
+        // event has been stopped, and Enter must always commit
+        if (e.key === 'Enter') { e.preventDefault(); ref.current && ref.current.blur(); }
+        else if (e.key === 'Escape') { e.preventDefault(); setDraft(value); setEditing(false); }
+      }}
+      style={{ ...style, minHeight: 0, height: '1.5em', padding: '0 4px', font: 'inherit', width: '100%', minWidth: 40 }} />
+  );
+}
+
 function Transport({ vals }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', borderBottom: '1px solid var(--color-divider)', flexWrap: 'wrap' }}>
@@ -98,7 +131,9 @@ function Timeline({ vals }) {
           <div style={{ height: 58, borderBottom: '1px solid var(--color-neutral-800)' }} />
           {vals.lanes.map(lane => (
             <div key={lane.id} style={{ position: 'relative', height: vals.laneH, display: 'flex', alignItems: 'center', gap: 5, padding: '0 8px', borderBottom: '1px solid color-mix(in srgb,var(--color-neutral-800) 45%,transparent)', fontSize: 11, letterSpacing: '.06em', color: 'var(--color-neutral-300)' }}>
-              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lane.name}</span>
+              <EditableLabel value={lane.name} placeholder="TRACK" onCommit={lane.onRename}
+                title="Double-click to rename this track (used in the exported file names)"
+                style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} />
               <span style={{ display: 'flex', gap: 3, flex: 'none' }}>
                 <button className={'msb ' + lane.mCls} onClick={lane.onMute}>M</button>
                 <button className={'msb ' + lane.sCls} onClick={lane.onSolo}>S</button>
@@ -119,7 +154,12 @@ function Timeline({ vals }) {
             <div style={{ height: 40, position: 'relative', borderBottom: '1px solid color-mix(in srgb,var(--color-neutral-800) 55%,transparent)' }}>
               {vals.regionBlocks.map((rb, i) => (
                 <div key={i} style={{ position: 'absolute', top: 0, bottom: 0, left: rb.left, width: rb.width, borderLeft: '1px solid var(--color-neutral-800)', padding: '4px 24px 3px 8px', minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap', background: rb.bg }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 500, color: 'var(--color-neutral-200)', letterSpacing: '.03em', overflow: 'hidden', textOverflow: 'ellipsis' }}>{rb.title}</div>
+                  <div style={{ fontSize: 10.5, fontWeight: 500, color: 'var(--color-neutral-200)', letterSpacing: '.03em', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', gap: 4 }}>
+                    <span className="mono" style={{ flex: 'none', color: 'var(--color-accent-300)' }}>{rb.num}</span>
+                    <EditableLabel value={rb.name} placeholder="name" onCommit={rb.onRename}
+                      title="Double-click to rename this section"
+                      style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} />
+                  </div>
                   <div className="mono" style={{ fontSize: 9.5, color: 'var(--color-neutral-500)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{rb.sub}</div>
                   <button className={'msb ' + rb.loopCls} style={{ position: 'absolute', top: 3, right: 3, width: 18, height: 16, fontSize: 11, lineHeight: 1 }} onClick={rb.onLoop} title="Loop this section">⟳</button>
                 </div>
@@ -141,8 +181,8 @@ function Timeline({ vals }) {
                     {sl.hasWave && (
                       <svg viewBox={sl.vb} preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }}>
                         <path d={sl.p1} fill={sl.f1} opacity={sl.o1} />
-                        <path d={sl.p2} fill={sl.f2} />
-                        <path d={sl.p3} fill={sl.f3} />
+                        <path d={sl.p2} fill={sl.f2} opacity={sl.o2} />
+                        <path d={sl.p3} fill={sl.f3} opacity={sl.o3} />
                       </svg>
                     )}
                     <b className="mono" style={{ position: 'absolute', top: 0, left: 4, fontSize: 9, fontWeight: 500, color: 'var(--color-accent-200)' }}>{sl.num}{sl.edited ? '✎' : ''}</b>

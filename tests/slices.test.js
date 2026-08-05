@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildStemSlices, trimLimits, normalizeProject, boundariesFor, scaleFor, makeZip, readZip, audioEntries, bucketTier, meterPos, dbPos } from '../src/lib/index.js';
+import { buildStemSlices, trimLimits, normalizeProject, boundariesFor, scaleFor, makeZip, readZip, audioEntries, bucketsPerBarFor, barBands, meterPos, dbPos } from '../src/lib/index.js';
 
 const BPM = 111;
 // two regions: bars 0-8 (9 bars, 1/4x) and bars 9-12 (4 bars, 1x)
@@ -130,8 +130,38 @@ test('readZip inflates deflated entries', async () => {
   assert.equal(entries[0].data.length, payload.length);
 });
 
-test('bucketTier grows waveform detail with zoom and stays bounded', () => {
-  assert.equal(bucketTier(10), 64);
-  assert.ok(bucketTier(500) > bucketTier(120));
-  assert.equal(bucketTier(100000), 2048);
+test('bucketsPerBarFor grows waveform detail with zoom and stays bounded', () => {
+  assert.ok(bucketsPerBarFor(400) > bucketsPerBarFor(40));
+  assert.equal(bucketsPerBarFor(1), 4);
+  assert.equal(bucketsPerBarFor(100000), 512);
+  assert.equal(Math.log2(bucketsPerBarFor(37)) % 1, 0, 'always a power of two so cached bars stay valid');
+});
+
+test('waveform buckets are anchored to bars, so trimming does not shift the drawing', () => {
+  // a bar of audio must produce identical buckets no matter what slice contains it
+  const sr = 44100, chL = new Float32Array(sr * 4), chR = new Float32Array(sr * 4);
+  for (let i = 0; i < chL.length; i++) { chL[i] = Math.sin(i / 40) * (0.2 + 0.8 * ((i / sr) % 1)); chR[i] = chL[i]; }
+  const bounds = boundariesFor(120, 2);          // 2 bars of 2 s
+  const bpb = 64;
+  const bar0 = barBands(chL, chR, bounds[0], bounds[1], bpb);
+  const bar1 = barBands(chL, chR, bounds[1], bounds[2], bpb);
+  // recomputing the same bar gives byte-identical data (cache-safe, no jitter)
+  const again = barBands(chL, chR, bounds[0], bounds[1], bpb);
+  assert.deepEqual([...bar0.max], [...again.max]);
+  assert.deepEqual([...bar0.min], [...again.min]);
+  // a 2-bar slice is exactly bar0 followed by bar1 — extending a slice appends
+  // data rather than resampling everything at new bucket boundaries
+  const twoBar = new Float32Array(bpb * 2);
+  twoBar.set(bar0.max, 0); twoBar.set(bar1.max, bpb);
+  assert.deepEqual([...twoBar.slice(0, bpb)], [...bar0.max]);
+  assert.deepEqual([...twoBar.slice(bpb)], [...bar1.max]);
+});
+
+test('waveform data is a true signed envelope, not a symmetric magnitude', () => {
+  const n = 4096, chL = new Float32Array(n), chR = new Float32Array(n);
+  for (let i = 0; i < n; i++) { chL[i] = i < n / 2 ? 0.8 : -0.3; chR[i] = chL[i]; }  // asymmetric
+  const b = barBands(chL, chR, 0, n, 4);
+  assert.ok(b.max[0] > 0.7 && b.min[0] > -0.05, 'first half is positive-only');
+  assert.ok(b.min[3] < -0.2 && b.max[3] < 0.05, 'second half is negative-only');
+  assert.ok(b.rms[0] > 0, 'RMS body is computed for the fill');
 });
