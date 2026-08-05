@@ -218,39 +218,62 @@ The README screenshots are regenerated with `node scripts/screenshots.mjs` again
 
 ### Project structure
 
+The core (`src/lib`) is pure and DOM-free, so every format rule is unit-testable
+in Node. Above it sit three thin layers: hooks that own one concern each, small
+presentational components, and an audio engine that knows only samples.
+
 ```
 src/
-  main.jsx               entry point
-  App.jsx                state, Web Audio engine, view model
-  components/            one component per step
-    Header.jsx             step nav, naming panel, theme picker
-    FilesStep.jsx          stem/MIDI intake + demo loader
-    TempoStep.jsx          BPM confirmation
-    RegionsStep.jsx        section → pattern table
-    ResultsStep.jsx        transport, timeline, slice editing, table view
-    ExportStep.jsx         per-stem downloads + ZIP
-    ProjectStep.jsx        project-folder builder
-  lib/                   pure, DOM-free core — unit-testable in Node
-    constants.js           sample rate + tempo math
-    wav.js                 WAV parse/encode
-    midi.js                MIDI parse, sections, pattern scale rules
-    analysis.js            per-measure peaks, silence trim, waveform data
-    slices.js              slice building, manual trims, boundary splitting
-    otFile.js              .ot sidecar writer
-    bankFile.js            bank??.work pattern writer
-    markersFile.js         markers.work writer
-    projectFile.js         project.work parse/write
-    zip.js / unzip.js      archive writing and reading
-    dnd.js                 drag-and-drop intake
-    meters.js              dBFS meter scaling
-    demo.js                demo song synthesis
-  styles/                design tokens, themes, app styles
-tests/                   node --test suite
-docs/
-  notes-formats.md       Octatrack file-format notes, incl. device-verified corrections
-  OSSC_Specification_2_6.md   original product spec
-scripts/screenshots.mjs  regenerates the images in this README
+  App.jsx                  composition: wires the hooks to the six steps
+  main.jsx                 entry point
+
+  lib/                     pure core — no DOM, no React, fully tested
+    constants.js             sample rate + tempo math
+    wav.js  midi.js          format parsing
+    analysis.js              per-measure peaks, silence trim, waveform data
+    slices.js                slice building, manual trims, boundary splitting
+    otFile.js  bankFile.js  markersFile.js  projectFile.js   device writers
+    zip.js  unzip.js  dnd.js  meters.js  demo.js
+
+  audio/
+    AudioEngine.js           Web Audio graph + scheduling, in samples only
+    visualizers.js           canvas drawing for meters, scopes, spectrum
+
+  waveform/WaveformCache.js  bar-anchored waveform cache
+
+  export/                   "save something to disk", as pure functions
+    naming.js  stemFiles.js  patternSheet.js  projectBuild.js  download.js
+
+  state/                    one hook per concern
+    usePrefs  useThemeColors  useAnimationFrame
+    useStems  useMixer  useAnalysis  useSliceEdits
+    useTransport  usePlayhead  useTimelineView  useTimelineGestures
+    useFileDrop  useProjectFolder  useDragResize  useExports
+
+  components/
+    header/    Header, NamingPanel, ThemePicker
+    steps/     FilesStep, TempoStep, RegionsStep, ResultsStep, ExportStep, ProjectStep
+    timeline/  Transport, Overview, Ruler, RegionHeader, TrackRail, Lane,
+               SliceBlock, Playhead, SelectionBar, PatternTable
+    ui/        EditableLabel, Field, LevelMeter, Oscilloscope, DropZone,
+               DropOverlay, Notices
+
+  styles/                  design tokens, themes, app styles
+
+tests/                     node --test suite for the core
+docs/                      format notes, spec, README images
+scripts/screenshots.mjs    regenerates the README images by driving the real app
 ```
+
+Two decisions worth knowing when reading it:
+
+- **Slices are derived, never stored.** The analysis produces the measure grid
+  and per-stem peaks; slice positions come out of a `useMemo` over
+  `(analysis, threshold, edits)`. Change any one of them and the timeline, the
+  exports and the audio engine all follow from the same recomputation.
+- **The engine is told, not asked.** `AudioEngine` takes a program (which slices
+  each track plays) and re-cues itself in place when that program changes, which
+  is what makes an edit audible the moment you make it.
 
 ---
 

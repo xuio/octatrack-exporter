@@ -1,7 +1,8 @@
 // Regenerates the README screenshots by driving the real app in headless Chrome.
 //   npm run build && npm run preview &   # serve dist/ on :4173
-//   node scripts/screenshots.mjs
-// Chrome path can be overridden with CHROME=/path/to/chrome
+//   npm run screenshots
+// Everything is driven through the UI — no reaching into component internals —
+// so this doubles as an end-to-end smoke test of the whole flow.
 import puppeteer from 'puppeteer-core';
 import { mkdirSync } from 'node:fs';
 
@@ -20,88 +21,87 @@ const browser = await puppeteer.launch({
 });
 const page = await browser.newPage();
 
-const clickText = async (text) => page.evaluate(t => {
-  const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim().startsWith(t));
-  if (!b) throw new Error('no button starting with ' + t);
-  b.click();
+const click = (text) => page.evaluate((t) => {
+  const button = [...document.querySelectorAll('button')].find(b => b.textContent.trim().startsWith(t));
+  if (!button) throw new Error(`no button starting with "${t}"`);
+  button.click();
 }, text);
 
-const app = async () => page.evaluateHandle(() => {
-  const el = document.querySelector('.stp');
-  const k = Object.keys(el).find(x => x.startsWith('__reactFiber'));
-  let f = el[k];
-  while (f) { if (f.stateNode && f.stateNode.state && 'step' in f.stateNode.state) return f.stateNode; f = f.return; }
-  return null;
-});
+const clickTitle = (title) => page.evaluate((t) => {
+  const button = [...document.querySelectorAll('button')].find(b => b.title?.startsWith(t));
+  if (!button) throw new Error(`no button titled "${t}"`);
+  button.click();
+}, title);
 
-const setState = async (patch) => {
-  const inst = await app();
-  await page.evaluate((i, p) => i.setState(p), inst, patch);
-  await wait(500);
-};
-
+const until = (fn, arg, timeout = 40000) => page.waitForFunction(fn, { timeout, polling: 200 }, arg);
+const atStep = (label) => until(l => document.querySelector('.stp.on')?.textContent === l, label);
 const shot = async (name) => { await page.screenshot({ path: `${OUT}/${name}.png` }); console.log('✓', name); };
 
 await page.goto(BASE, { waitUntil: 'networkidle0' });
 await page.evaluate(() => localStorage.clear());
 await page.reload({ waitUntil: 'networkidle0' });
-await wait(600);
+await wait(500);
 
 // 1 — intake
 await shot('01-files-empty');
-
-await clickText('Shake');
-await wait(5000);
+await click('Shake');
+await until(() => /STEMS · 5 loaded/.test(document.body.innerText));
 await shot('02-files-loaded');
 
 // 2 — tempo
-await clickText('Continue');
-await wait(700);
+await click('Continue');
+await atStep('2 Tempo');
 await shot('03-tempo');
 
-// 3 — regions
-await clickText('Confirm');
-await wait(700);
+// 3 — sections
+await click('Confirm');
+await atStep('3 Regions');
 await shot('04-regions');
 
 // 4 — timeline
-await clickText('Analyze');
-await wait(6000);
-await setState({ railW: 250, laneH: 62, scopeMode: 'scope', ppm: 26 });
+await click('Analyze');
+await atStep('4 Results');
+await until(() => document.querySelectorAll('.slice-block').length > 0);
+// make sure the scopes are showing (they are on by default — only click if not)
+await page.evaluate(() => {
+  const button = [...document.querySelectorAll('button')].find(b => b.title?.startsWith('Per-track oscilloscopes'));
+  if (!button.classList.contains('on')) button.click();
+});
+await wait(600);
 await shot('05-timeline');
 
-// selection + trim handles
-const inst = await app();
-await page.evaluate(i => {
-  const sd = i.state.analysis.stemData.find(x => x.id === i.state.stems[3].id);
-  i.setState({ sel: { stemId: sd.id, regionIdx: sd.slices[1].region.idx }, ppm: 34 });
-}, inst);
-await wait(700);
+// a selected clip shows its trim handles and the detail bar
+await page.evaluate(() => document.querySelectorAll('.slice-block')[8].dispatchEvent(new MouseEvent('click', { bubbles: true })));
+await until(() => document.querySelectorAll('.trim-h').length === 2);
 await shot('06-slice-selected');
 
-// meters + scopes while playing
-await page.evaluate(i => { i.setState({ startMeasure: 12, vol: 1 }); setTimeout(() => i.play(), 200); }, inst);
+// playing: meters, scopes and the playhead
+await clickTitle('Play');
 await wait(2500);
 await shot('07-playing');
-await page.evaluate(i => i.stop(), inst);
+await clickTitle('Stop');
 
-// table view
-await setState({ view: 'table' });
+// pattern table
+await page.evaluate(() => [...document.querySelectorAll('.seg-opt')].find(l => /Table/.test(l.textContent)).querySelector('input').click());
+await wait(500);
 await shot('08-table');
-await setState({ view: 'tl' });
+await page.evaluate(() => [...document.querySelectorAll('.seg-opt')].find(l => /Timeline/.test(l.textContent)).querySelector('input').click());
 
 // 5 — export
-await clickText('Export →');
-await wait(700);
+await click('Export →');
+await atStep('5 Export');
 await shot('09-export');
 
-// themes (timeline in each scheme)
-await setState({ step: 'results' });
-for (const theme of ['cobalt', 'ember', 'paper']) {
-  await setState({ theme });
-  await shot(`10-theme-${theme}`);
+// themes, back on the timeline
+await click('4 Results');
+await atStep('4 Results');
+for (const theme of ['Cobalt', 'Ember', 'Paper']) {
+  await page.evaluate((t) => {
+    [...document.querySelectorAll('.theme-opt')].find(o => o.textContent.startsWith(t)).click();
+  }, theme);
+  await wait(500);
+  await shot(`10-theme-${theme.toLowerCase()}`);
 }
-await setState({ theme: 'nocturne' });
 
 await browser.close();
 console.log('done →', OUT);
