@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildStemSlices, boundariesFor, scaleFor, makeZip, readZip, audioEntries, bucketTier } from '../src/lib/index.js';
+import { buildStemSlices, trimLimits, normalizeProject, boundariesFor, scaleFor, makeZip, readZip, audioEntries, bucketTier, meterPos, dbPos } from '../src/lib/index.js';
 
 const BPM = 111;
 // two regions: bars 0-8 (9 bars, 1/4x) and bars 9-12 (4 bars, 1x)
@@ -31,13 +31,57 @@ test('deleting a slice removes it, renumbers the rest and leaves a ghost', () =>
   assert.deepEqual(ghosts.map(g => [g.region.idx, g.deleted]), [[1, true]]);
 });
 
-test('manual trim overrides the threshold result and is clamped to the region', () => {
+test('manual trim overrides the threshold result', () => {
   const { slices } = buildStemSlices(peaks, regs, bounds, TH, { 1: { a: 2, b: 5 } });
   assert.deepEqual([slices[0].aM, slices[0].bM], [2, 5]);
   assert.equal(slices[0].trig, 9);                   // bar 3 → step 9 at 1/4x
   assert.equal(slices[0].edited, true);
-  const over = buildStemSlices(peaks, regs, bounds, TH, { 1: { a: -5, b: 99 } });
-  assert.deepEqual([over.slices[0].aM, over.slices[0].bM], [0, 8]); // clamped inside region 1
+});
+
+test('a slice can expand into the next section; its trig follows to that pattern', () => {
+  // region 2's slice is dragged back to start at bar 7, inside region 1
+  const { slices } = buildStemSlices(peaks, regs, bounds, TH, { 1: { del: true }, 2: { a: 7, b: 12 } });
+  const s = slices.find(x => x.region.idx === 2);
+  assert.deepEqual([s.aM, s.bM], [7, 12]);
+  assert.equal(s.trigRegionIdx, 1, 'starts inside region 1, so it trigs from that pattern');
+  assert.equal(s.movedTrig, true);
+  assert.equal(s.trig, 29);                          // bar 8 of region 1 → (7-0)*4+1
+  // and expanding forward past the song end is clamped
+  const past = buildStemSlices(peaks, regs, bounds, TH, { 2: { a: 9, b: 99 } });
+  assert.equal(past.slices.find(x => x.region.idx === 2).bM, 12);
+});
+
+test('slices never overlap: an expanded slice pushes back the one before it', () => {
+  const { slices } = buildStemSlices(peaks, regs, bounds, TH, { 2: { a: 6, b: 12 } });
+  const first = slices.find(x => x.region.idx === 1), second = slices.find(x => x.region.idx === 2);
+  assert.ok(first.bM < second.aM, 'no overlap in the chain');
+  assert.equal(first.bM, 5);
+  // chain offsets stay contiguous
+  assert.equal(second.outStart, first.outEnd);
+});
+
+test('trimLimits reports how far each edge may travel', () => {
+  const { slices } = buildStemSlices(peaks, regs, bounds, TH);
+  const lim = trimLimits(slices, 2, regs);
+  assert.equal(lim.minA, slices[0].bM + 1);   // cannot run into the previous slice
+  assert.equal(lim.maxB, 12);                 // last bar of the song
+});
+
+test('normalizeProject finds the project root in a folder or a zip', () => {
+  const a = normalizeProject([{ path: 'MySet/project.work' }, { path: 'MySet/bank01.work' }, { path: 'MySet/__MACOSX/x' }]);
+  assert.equal(a.folder, 'MySet');
+  assert.deepEqual(a.files.map(f => f.rel), ['project.work', 'bank01.work']);
+  const b = normalizeProject([{ path: 'project.work' }, { path: 'markers.work' }]);  // zipped from inside
+  assert.equal(b.folder, 'PROJECT');
+  assert.deepEqual(b.files.map(f => f.rel), ['project.work', 'markers.work']);
+  assert.equal(normalizeProject([{ path: 'notes.txt' }]), null);
+});
+
+test('meters are scaled in dB, not amplitude', () => {
+  assert.equal(meterPos(1), 1);                       // 0 dBFS at the top
+  assert.equal(meterPos(0), 0);
+  assert.ok(Math.abs(meterPos(0.5) - dbPos(-6.02)) < 0.01);  // half amplitude ≈ −6 dB
+  assert.ok(meterPos(0.5) > 0.85, 'a −6 dB signal sits near the top, not halfway');
 });
 
 test('a manual trim can restore a slice the threshold dropped', () => {

@@ -1,0 +1,87 @@
+/* Colour schemes.
+   Each theme sets a few variables and the ramps below are generated from them in
+   OKLCH, so every shade keeps the same lightness as the Nocturne originals and
+   only hue/chroma change. That keeps contrast (and the documented ratios) intact
+   across themes. Applied via data-theme on <html>. */
+
+:root[data-theme] {
+  --color-accent-100: oklch(0.970 calc(var(--ac) * 0.16) var(--ah));
+  --color-accent-200: oklch(0.920 calc(var(--ac) * 0.26) var(--ah));
+  --color-accent-300: oklch(0.855 calc(var(--ac) * 0.50) var(--ah));
+  --color-accent-400: oklch(0.755 calc(var(--ac) * 0.82) var(--ah));
+  --color-accent-500: oklch(0.660 var(--ac) var(--ah));
+  --color-accent-600: oklch(0.560 calc(var(--ac) * 0.96) var(--ah));
+  --color-accent-700: oklch(0.450 calc(var(--ac) * 0.80) var(--ah));
+  --color-accent-800: oklch(0.350 calc(var(--ac) * 0.62) var(--ah));
+  --color-accent-900: oklch(0.262 calc(var(--ac) * 0.40) var(--ah));
+  --color-accent: var(--color-accent-500);
+  --color-accent-2: oklch(0.734 calc(var(--ac) * 0.66) var(--ah));
+
+  --color-neutral-100: oklch(0.972 var(--nc) var(--nh));
+  --color-neutral-200: oklch(0.922 var(--nc) var(--nh));
+  --color-neutral-300: oklch(0.860 var(--nc) var(--nh));
+  --color-neutral-400: oklch(0.762 var(--nc) var(--nh));
+  --color-neutral-500: oklch(0.660 var(--nc) var(--nh));
+  --color-neutral-600: oklch(0.560 var(--nc) var(--nh));
+  --color-neutral-700: oklch(0.455 var(--nc) var(--nh));
+  --color-neutral-800: oklch(0.360 var(--nc) var(--nh));
+  --color-neutral-900: oklch(0.268 var(--nc) var(--nh));
+
+  --color-bg: oklch(var(--bgl) var(--bgc) var(--nh));
+  --color-surface: oklch(calc(var(--bgl) + 0.045) var(--bgc) var(--nh));
+  --color-text: var(--color-neutral-100);
+  --color-divider: color-mix(in srgb, var(--color-text) 16%, transparent);
+}
+
+/* — dark schemes ————————————————————————————————— */
+
+/* the original: blurple on cool graphite */
+:root[data-theme="nocturne"] { --ah: 289; --ac: 0.125; --nh: 268; --nc: 0.012; --bgl: 0.212; --bgc: 0.018; }
+
+/* deep blue console, cyan accent */
+:root[data-theme="cobalt"]   { --ah: 232; --ac: 0.130; --nh: 240; --nc: 0.014; --bgl: 0.205; --bgc: 0.026; }
+
+/* warm studio: amber on near-black brown */
+:root[data-theme="ember"]    { --ah: 62;  --ac: 0.140; --nh: 70;  --nc: 0.010; --bgl: 0.198; --bgc: 0.014; }
+
+/* tape machine green */
+:root[data-theme="moss"]     { --ah: 158; --ac: 0.115; --nh: 165; --nc: 0.010; --bgl: 0.203; --bgc: 0.016; }
+
+/* magenta on charcoal */
+:root[data-theme="orchid"]   { --ah: 348; --ac: 0.135; --nh: 330; --nc: 0.010; --bgl: 0.207; --bgc: 0.014; }
+
+/* neutral graphite, no colour cast — accent only where it matters */
+:root[data-theme="graphite"] { --ah: 220; --ac: 0.075; --nh: 250; --nc: 0.004; --bgl: 0.215; --bgc: 0.004; }
+
+/* — light scheme ————————————————————————————————
+   The neutral ramp is inverted so 100 stays "most prominent text" and 800/900
+   stay "hairlines and wells" — the app's semantics survive the flip. */
+:root[data-theme="paper"] {
+  --ah: 268; --ac: 0.120; --nh: 265; --nc: 0.008;
+  --color-neutral-100: oklch(0.255 var(--nc) var(--nh));
+  --color-neutral-200: oklch(0.330 var(--nc) var(--nh));
+  --color-neutral-300: oklch(0.410 var(--nc) var(--nh));
+  --color-neutral-400: oklch(0.500 var(--nc) var(--nh));
+  --color-neutral-500: oklch(0.585 var(--nc) var(--nh));
+  --color-neutral-600: oklch(0.670 var(--nc) var(--nh));
+  --color-neutral-700: oklch(0.790 var(--nc) var(--nh));
+  --color-neutral-800: oklch(0.885 var(--nc) var(--nh));
+  --color-neutral-900: oklch(0.945 var(--nc) var(--nh));
+  /* The accent ramp is inverted too: 200/300 are "accent text" in this app and
+     must be dark here, while 700–900 are fills and must be light. */
+  --color-accent-100: oklch(0.300 calc(var(--ac) * 0.55) var(--ah));
+  --color-accent-200: oklch(0.420 calc(var(--ac) * 0.80) var(--ah));
+  --color-accent-300: oklch(0.485 var(--ac) var(--ah));
+  --color-accent-400: oklch(0.620 var(--ac) var(--ah));
+  --color-accent-500: oklch(0.560 var(--ac) var(--ah));
+  --color-accent-600: oklch(0.505 var(--ac) var(--ah));
+  --color-accent-700: oklch(0.740 calc(var(--ac) * 0.55) var(--ah));
+  --color-accent-800: oklch(0.900 calc(var(--ac) * 0.30) var(--ah));
+  --color-accent-900: oklch(0.955 calc(var(--ac) * 0.16) var(--ah));
+  --color-accent: var(--color-accent-500);
+  --color-bg: oklch(0.988 0.003 var(--nh));
+  --color-surface: oklch(0.962 0.005 var(--nh));
+  --color-text: oklch(0.235 0.010 var(--nh));
+}
+/* waveform fills read as "ink" rather than "glow" on a light background */
+:root[data-theme="paper"] .slice-block { background: oklch(0.965 0.012 var(--ah)); }

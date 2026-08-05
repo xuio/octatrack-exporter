@@ -12,13 +12,24 @@ function Transport({ vals }) {
       </button>
       <span className="mono" ref={vals.posRef} style={{ fontSize: 14, letterSpacing: '.08em', color: 'var(--color-accent-300)', border: '1px solid var(--color-neutral-800)', borderRadius: 4, padding: '2px 10px', background: 'var(--color-surface)', minWidth: 74, textAlign: 'center' }}>{vals.posLabel}</span>
       <button className={'tb ' + vals.followCls} onClick={vals.onToggleFollow} title="Keep the view following the playhead">Follow</button>
+      <span style={{ display: 'inline-flex', gap: 3 }}>
+        <button className="tb" onClick={vals.onUndo} disabled={!vals.canUndo} title="Undo slice edit (⌘Z)">↶</button>
+        <button className="tb" onClick={vals.onRedo} disabled={!vals.canRedo} title="Redo slice edit (⇧⌘Z)">↷</button>
+      </span>
       {vals.hasLoop && (
         <button className="tag tag-accent" style={{ fontSize: 10, border: 'none', cursor: 'pointer' }} onClick={vals.onClearLoop} title="Release the loop and keep playing from here">⟳ looping {vals.loopLabel} ✕</button>
       )}
       <div style={{ display: 'inline-flex', flex: 'none', alignItems: 'center', gap: 6, marginLeft: 8 }}>
-        <span style={{ fontSize: 10, color: 'var(--color-neutral-500)' }}>VOL</span>
-        <input type="range" min="0" max="1" step="0.01" style={{ width: 90 }} value={vals.vol} onChange={vals.onVol} />
-        <canvas ref={vals.masterMeterRef} style={{ width: 66, height: 10, background: 'var(--color-neutral-900)', borderRadius: 2 }} title="Master level" />
+        <span style={{ fontSize: 10, color: 'var(--color-neutral-500)' }} title="Monitoring level only — never applied to exported audio">VOL</span>
+        <input type="range" min="0" max="1" step="0.01" style={{ width: 74 }} value={vals.vol} onChange={vals.onVol} />
+        <span style={{ position: 'relative', width: 118, flex: 'none' }} title="Master level (dBFS)">
+          <canvas ref={vals.masterMeterRef} style={{ display: 'block', width: 118, height: 11, background: 'var(--color-neutral-900)', borderRadius: 2 }} />
+          <span style={{ position: 'relative', display: 'block', height: 9 }}>
+            {vals.meterTicks.map(t => (
+              <span key={t.db} className="mono" style={{ position: 'absolute', left: t.pct + '%', top: 0, transform: t.db === 0 ? 'translateX(-100%)' : 'translateX(-50%)', fontSize: 7.5, color: t.db === 0 ? '#e0483c' : 'var(--color-neutral-600)' }}>{t.label}</span>
+            ))}
+          </span>
+        </span>
       </div>
       <div style={{ display: 'inline-flex', flex: 'none', alignItems: 'center', gap: 4, marginLeft: 8 }}>
         <span style={{ fontSize: 10, color: 'var(--color-neutral-500)' }}>THRESHOLD</span>
@@ -95,7 +106,7 @@ function Timeline({ vals }) {
               {vals.scopesOn && (
                 <canvas ref={lane.scopeRef} style={{ flex: 'none', width: vals.scopeW, height: 'calc(100% - 12px)', background: 'var(--color-bg)', border: '1px solid color-mix(in srgb,var(--color-neutral-800) 60%,transparent)', borderRadius: 3 }} />
               )}
-              <canvas ref={lane.meterRef} style={{ flex: 'none', width: 5, height: 'calc(100% - 12px)', background: 'var(--color-neutral-900)', borderRadius: 2 }} />
+              <canvas ref={lane.meterRef} title="Track level (dBFS) — red above −3, line at 0" style={{ flex: 'none', width: 8, height: 'calc(100% - 12px)', background: 'var(--color-neutral-900)', borderRadius: 2 }} />
               <div onPointerDown={vals.onLaneResize} title="Drag to resize track height"
                 style={{ position: 'absolute', left: 0, right: 0, bottom: -2, height: 5, cursor: 'ns-resize', zIndex: 2 }} />
             </div>
@@ -159,7 +170,7 @@ function Timeline({ vals }) {
             <span className="tag tag-accent" style={{ fontSize: 10 }}>{vals.selTitle}</span>
             <span>region <b style={{ color: 'var(--color-neutral-200)', fontWeight: 500 }}>{vals.selRegion}</b></span>
             <span>song bar <b style={{ color: 'var(--color-neutral-200)', fontWeight: 500 }}>{vals.selFromBar}</b> = pattern bar <b style={{ color: 'var(--color-neutral-200)', fontWeight: 500 }}>{vals.selPatternBar}</b></span>
-            <span>trig step <b className="mono" style={{ color: 'var(--color-accent-300)', fontWeight: 500 }}>{vals.selTrig}</b></span>
+            <span>trig step <b className="mono" style={{ color: 'var(--color-accent-300)', fontWeight: 500 }}>{vals.selTrig}</b>{vals.selMovedTrig && <span className="tag tag-outline" style={{ fontSize: 9, marginLeft: 5 }}>trigs from {vals.selTrigPattern}</span>}</span>
             <span className="mono" style={{ color: 'var(--color-neutral-500)' }}>{vals.selSamples}</span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
               <span style={{ fontSize: 10, color: 'var(--color-neutral-500)' }}>START</span>

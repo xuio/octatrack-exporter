@@ -21,7 +21,9 @@ export function writeStaticSlots(text, entries, bpm) {
     if (/TYPE=STATIC/i.test(body) && s && used.has(parseInt(s[1]))) { removed++; return ''; }
     return blk;
   });
-  const blocks = entries.map(e => '[SAMPLE]\r\nTYPE=STATIC\r\nSLOT=' + e.slot + '\r\nPATH=' + e.path + '\r\nBPMx24=' + Math.round(e.bpm * 24) + '\r\nTSMODE=0\r\nLOOPMODE=0\r\nGAIN=72\r\nTRIGQUANTIZATION=255\r\n[/SAMPLE]\r\n\r\n').join('');
+  // GAIN=48 is unity: the slot gain range is 0..96 = −24..+24 dB (ot-tools-io
+  // DEFAULT_GAIN). 72 is the *recorder*-slot default and would add +12 dB.
+  const blocks = entries.map(e => '[SAMPLE]\r\nTYPE=STATIC\r\nSLOT=' + e.slot + '\r\nPATH=' + e.path + '\r\nBPMx24=' + Math.round(e.bpm * 24) + '\r\nTSMODE=0\r\nLOOPMODE=0\r\nGAIN=48\r\nTRIGQUANTIZATION=255\r\n[/SAMPLE]\r\n\r\n').join('');
   const idx = text.lastIndexOf('############################');
   if (idx < 0) return { error: 'unrecognized project.work layout' };
   return { text: text.slice(0, idx) + blocks + text.slice(idx), removed, tempoSet };

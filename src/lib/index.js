@@ -5,6 +5,8 @@ export * from './midi.js';
 export * from './analysis.js';
 export * from './slices.js';
 export * from './unzip.js';
+export * from './dnd.js';
+export * from './meters.js';
 export * from './otFile.js';
 export * from './zip.js';
 export * from './projectFile.js';

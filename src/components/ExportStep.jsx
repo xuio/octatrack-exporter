@@ -7,6 +7,10 @@ export default function ExportStep({ vals }) {
           <label>Song abbreviation</label>
           <input className="input" value={vals.abbrev} onChange={vals.onAbbrev} placeholder="e.g. Shake" />
         </div>
+        <div className="field" style={{ width: 240 }}>
+          <label>ZIP name</label>
+          <input className="input" value={vals.zipName} onChange={vals.onZipName} placeholder={vals.zipNamePh} />
+        </div>
         <span className="hint" style={{ paddingBottom: 9 }}>files: <span className="mono">{vals.namingPreview}</span></span>
       </div>
       {vals.hasExportNotices && (

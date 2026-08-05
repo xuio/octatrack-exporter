@@ -40,6 +40,22 @@ input[type=range]::-moz-range-thumb { width: 11px; height: 11px; border-radius: 
 .pulse { animation: osscpulse 1.2s infinite; }
 .btn { white-space: nowrap; flex: none; }
 
+/* theme picker */
+.theme-picker .theme-menu { display: none; position: absolute; right: 0; top: 24px; z-index: 60; min-width: 210px; padding: 4px; border: 1px solid var(--color-divider); border-radius: 6px; background: var(--color-surface); box-shadow: 0 8px 24px rgb(0 0 0 / .35); }
+.theme-picker:hover .theme-menu, .theme-picker:focus-within .theme-menu { display: block; }
+.theme-opt { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border: none; border-radius: 4px; background: transparent; color: var(--color-neutral-300); font: inherit; font-size: 11.5px; cursor: pointer; }
+.theme-opt:hover { background: color-mix(in srgb, var(--color-text) 8%, transparent); }
+.theme-opt.on { color: var(--color-accent-300); }
+.theme-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; border: 1px solid color-mix(in srgb, #fff 25%, transparent); }
+/* each swatch previews its own scheme */
+.theme-dot[data-theme="nocturne"] { background: linear-gradient(135deg, #968ae0 55%, #232532 55%); }
+.theme-dot[data-theme="cobalt"]   { background: linear-gradient(135deg, oklch(.66 .13 232) 55%, oklch(.25 .026 240) 55%); }
+.theme-dot[data-theme="ember"]    { background: linear-gradient(135deg, oklch(.66 .14 62) 55%, oklch(.243 .014 70) 55%); }
+.theme-dot[data-theme="moss"]     { background: linear-gradient(135deg, oklch(.66 .115 158) 55%, oklch(.248 .016 165) 55%); }
+.theme-dot[data-theme="orchid"]   { background: linear-gradient(135deg, oklch(.66 .135 348) 55%, oklch(.252 .014 330) 55%); }
+.theme-dot[data-theme="graphite"] { background: linear-gradient(135deg, oklch(.66 .075 220) 55%, oklch(.26 .004 250) 55%); }
+.theme-dot[data-theme="paper"]    { background: linear-gradient(135deg, oklch(.56 .12 268) 55%, oklch(.97 .003 265) 55%); }
+
 /* recurring text roles */
 .k-label { font-size: 10px; letter-spacing: .1em; color: var(--color-neutral-600); text-transform: uppercase; margin-bottom: 2px; }
 .hint { font-size: 11.5px; color: var(--color-neutral-500); }
@@ -48,6 +64,7 @@ input[type=range]::-moz-range-thumb { width: 11px; height: 11px; border-radius: 
 /* drop zones */
 .drop { border: 1px dashed var(--color-neutral-700); border-radius: var(--radius-md); text-align: center; cursor: pointer; background: color-mix(in srgb, var(--color-surface) 55%, transparent); }
 .drop:hover { border-color: var(--color-accent-600); }
+.drop.dropping { border-color: var(--color-accent); border-style: solid; background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
 
 /* timeline slice blocks */
 .slice-block { position: absolute; top: 5px; bottom: 5px; background: var(--color-accent-900); border-radius: 3px; overflow: hidden; cursor: pointer; }

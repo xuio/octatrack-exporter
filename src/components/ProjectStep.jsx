@@ -6,11 +6,17 @@ export default function ProjectStep({ vals }) {
         <p style={{ fontSize: 12.5, color: 'var(--color-neutral-400)', margin: 0 }}>
           Drop your own default Octatrack project folder (saved from your unit). OSSC never touches it in place — it produces a copy with the stems inside the project folder, Static slots assigned, and the Bank 2+ patterns programmed: trigs, slice p-locks, per-track scales.
         </p>
-        <div className="drop" onClick={vals.onPickProject} style={{ padding: '28px 20px' }}>
-          <div style={{ fontSize: 13, color: 'var(--color-neutral-200)', marginBottom: 4 }}>Select project folder</div>
-          <div className="hint">project.work + bank files from your CF card</div>
+        <div className={'drop' + (vals.projDropping ? ' dropping' : '')} onClick={vals.onPickProject}
+          onDragOver={vals.onProjectDragOver} onDragLeave={vals.onProjectDragLeave} onDrop={vals.onProjectDrop} style={{ padding: '28px 20px' }}>
+          <div style={{ fontSize: 13, color: 'var(--color-neutral-200)', marginBottom: 4 }}>Drop or select project folder</div>
+          <div className="hint">project.work + bank files from your CF card — a .zip of the folder works too</div>
+          <div style={{ marginTop: 10, display: 'flex', gap: 8, justifyContent: 'center' }}>
+            <span className="btn btn-secondary" style={{ fontSize: 11, pointerEvents: 'none' }}>Browse folder</span>
+            <button className="btn btn-secondary" style={{ fontSize: 11 }} onClick={e => { e.stopPropagation(); vals.onPickProjectZip(); }}>Browse .zip</button>
+          </div>
         </div>
         <input type="file" webkitdirectory="true" style={{ display: 'none' }} ref={vals.dirInputRef} onChange={vals.onProjectInput} />
+        <input type="file" accept=".zip" style={{ display: 'none' }} ref={vals.zipInputRef} onChange={vals.onProjectInput} />
         <div className="card" style={{ border: '1px solid var(--color-accent-800)' }}>
           <div className="card-kicker">Scene preservation</div>
           <div style={{ fontSize: 11.5, color: 'var(--color-neutral-400)', lineHeight: 1.6 }}>
@@ -41,6 +47,10 @@ export default function ProjectStep({ vals }) {
                 ))}
               </tbody>
             </table>
+            <div className="field" style={{ maxWidth: 320, marginTop: 8 }}>
+              <label>Output folder / ZIP name</label>
+              <input className="input" value={vals.projName} onChange={vals.onProjName} placeholder={vals.projNamePh} />
+            </div>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 10 }}>
               <button className="btn btn-primary" onClick={vals.onGenerateProject} disabled={vals.projBusy}>{vals.generateLabel}</button>
               <span className="hint" style={{ maxWidth: 420 }}>

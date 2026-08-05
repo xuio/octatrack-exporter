@@ -11,6 +11,15 @@ import ProjectStep from './components/ProjectStep.jsx';
 const SR = 44100;
 const PREF_KEY = 'ossc.prefs.v1';
 const loadPrefs = () => { try { return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch { return {}; } };
+export const THEMES = [
+  { id: 'nocturne', label: 'Nocturne', note: 'blurple on graphite' },
+  { id: 'cobalt', label: 'Cobalt', note: 'deep blue console' },
+  { id: 'ember', label: 'Ember', note: 'warm amber' },
+  { id: 'moss', label: 'Moss', note: 'tape-machine green' },
+  { id: 'orchid', label: 'Orchid', note: 'magenta on charcoal' },
+  { id: 'graphite', label: 'Graphite', note: 'near-neutral' },
+  { id: 'paper', label: 'Paper', note: 'light' },
+];
 
 export default class App extends React.Component {
   static defaultProps = { defaultThresholdDb: -60, waveStyle: 'spectral', showScopes: true };
@@ -25,9 +34,10 @@ export default class App extends React.Component {
       analysis: null, view: 'tl', ppm: 16, sel: null, playing: false, loopRegionIdx: null,
       waveStyle: p.waveStyle ?? props.waveStyle ?? 'spectral', scopeMode: p.scopeMode ?? (props.showScopes ? 'scope' : 'off'),
       startMeasure: 1, vol: 0.85, showWarn: false, zipBusy: false, project: null, projBusy: false, projReport: null,
-      edits: {}, follow: p.follow ?? true, railW: p.railW ?? 232, laneH: p.laneH ?? 50,
-      scrollX: 0, viewW: 0,
+      edits: {}, past: [], future: [], follow: p.follow ?? true, railW: p.railW ?? 232, laneH: p.laneH ?? 50,
+      scrollX: 0, viewW: 0, zipName: '', projName: '', theme: p.theme || 'nocturne',
     };
+    document.documentElement.setAttribute('data-theme', this.state.theme);
   }
 
   core = core;
@@ -38,14 +48,52 @@ export default class App extends React.Component {
     this.meterRaf = requestAnimationFrame(this.meterTick);
     this.keyH = (e) => {
       if (this.state.step !== 'results' || /INPUT|TEXTAREA/.test(e.target.tagName)) return;
-      if (e.code === 'Space') { e.preventDefault(); this.state.playing ? this.stop() : this.play(); }
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? this.redo() : this.undo(); }
+      else if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); this.redo(); }
+      else if (e.code === 'Space') { e.preventDefault(); this.state.playing ? this.stop() : this.play(); }
       else if ((e.key === 'Delete' || e.key === 'Backspace') && this.state.sel) { e.preventDefault(); this.deleteSelected(); }
     };
     window.addEventListener('keydown', this.keyH);
+    // Drops are handled window-wide: dropping next to the dashed box (or on any
+    // other part of the step) works, and a stray drop never makes the browser
+    // navigate away from the app.
+    this._dragDepth = 0;
+    this.dragOverH = e => { if (this.dropStep()) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } };
+    this.dragEnterH = e => { if (!this.dropStep()) return; e.preventDefault(); if (++this._dragDepth === 1) this.setState({ dragging: true }); };
+    this.dragLeaveH = e => { if (!this.dropStep()) return; if (--this._dragDepth <= 0) { this._dragDepth = 0; this.setState({ dragging: false }); } };
+    this.dropH = e => {
+      const step = this.dropStep(); if (!step) return;
+      e.preventDefault();
+      const cap = core.captureDrop(e.dataTransfer); // must read before any await
+      this._dragDepth = 0; this.setState({ dragging: false });
+      this.handleDrop(step, cap);
+    };
+    window.addEventListener('dragover', this.dragOverH);
+    window.addEventListener('dragenter', this.dragEnterH);
+    window.addEventListener('dragleave', this.dragLeaveH);
+    window.addEventListener('drop', this.dropH);
   }
-  componentWillUnmount() { window.removeEventListener('keydown', this.keyH); cancelAnimationFrame(this.meterRaf); this.stop(); }
+  componentWillUnmount() {
+    window.removeEventListener('keydown', this.keyH);
+    window.removeEventListener('dragover', this.dragOverH);
+    window.removeEventListener('dragenter', this.dragEnterH);
+    window.removeEventListener('dragleave', this.dragLeaveH);
+    window.removeEventListener('drop', this.dropH);
+    cancelAnimationFrame(this.meterRaf); this.stop();
+  }
+  dropStep() { const s = this.state.step; return s === 'files' || s === 'project' ? s : null; }
+  async handleDrop(step, cap) {
+    const items = await core.filesFromDataTransfer(cap);
+    if (!items.length) return;
+    if (step === 'project') return this.loadProject(items);
+    const stems = core.isStemDrop(items);
+    if (!stems.length) { this.setState({ filesError: 'Nothing usable in that drop — need .wav, .mid or a .zip/folder containing them.' }); return; }
+    this.handleFiles(stems.map(i => i.file).filter(Boolean));
+  }
   componentDidUpdate(_, prev) {
-    const k = ['follow', 'railW', 'laneH', 'waveStyle', 'scopeMode', 'threshold'];
+    if (prev.theme !== this.state.theme) { document.documentElement.setAttribute('data-theme', this.state.theme); this.cols = null; }
+    const k = ['follow', 'railW', 'laneH', 'waveStyle', 'scopeMode', 'threshold', 'theme'];
     if (k.some(x => prev[x] !== this.state[x])) {
       const o = {}; k.forEach(x => o[x] = this.state[x]);
       try { localStorage.setItem(PREF_KEY, JSON.stringify(o)); } catch {}
@@ -86,8 +134,9 @@ export default class App extends React.Component {
         an.getFloatTimeDomainData(this.tdBuf);
         for (let i = 0; i < N; i++) { const v = Math.abs(this.tdBuf[i]); if (v > pk) pk = v; }
       }
-      const e = this.envs[key] || (this.envs[key] = { env: 0, hold: 0, ht: 0 });
+      const e = this.envs[key] || (this.envs[key] = { env: 0, hold: 0, ht: 0, clip: false });
       e.env = Math.max(pk, e.env * 0.86);
+      if (pk >= core.CLIP_AMP) e.clip = true;
       if (pk >= e.hold) { e.hold = pk; e.ht = 40; } else if (--e.ht <= 0) e.hold *= 0.94;
       return e;
     };
@@ -99,21 +148,39 @@ export default class App extends React.Component {
     }
     if (this.masterMeterEl) this.drawMeter(this.masterMeterEl, lvl(this.masterAn, 'master'), true);
   };
+  // dBFS-scaled meter: accent below −3 dBFS, red above it, a hard red 0 dBFS
+  // line at the very top, tick marks down the scale and a latching clip flag.
   drawMeter(el, e, horiz) {
     const S = this.sizeCanvas(el); if (!S) return;
     const { c, w, h } = S;
     c.clearRect(0, 0, w, h);
-    const v = Math.min(1, Math.sqrt(e.env)), hp = Math.min(1, Math.sqrt(e.hold));
-    c.fillStyle = this.cols.a5;
-    if (horiz) {
-      c.fillRect(0, 0, w * v, h);
-      if (v > 0.75) { c.fillStyle = this.cols.a2; c.fillRect(w * 0.75, 0, w * (v - 0.75), h); }
-      if (hp > 0.02) { c.fillStyle = this.cols.n1; c.fillRect(Math.min(w - 1.5, w * hp), 0, 1.5, h); }
-    } else {
-      c.fillRect(0, h - h * v, w, h * v);
-      if (v > 0.75) { c.fillStyle = this.cols.a2; c.fillRect(0, h - h * v, w, h * (v - 0.75)); }
-      if (hp > 0.02) { c.fillStyle = this.cols.n1; c.fillRect(0, Math.max(0, h - h * hp - 1.5), w, 1.5); }
+    const v = core.meterPos(e.env), hp = core.meterPos(e.hold), red = core.dbPos(core.RED_DB);
+    const RED = '#e0483c';
+    const len = (p) => (horiz ? w : h) * p;
+    // scale ticks
+    c.fillStyle = 'color-mix(in srgb, #ffffff 18%, transparent)';
+    for (const db of core.METER_TICKS) {
+      const p = len(core.dbPos(db));
+      if (horiz) c.fillRect(p, h - 2, 1, 2); else c.fillRect(0, h - p, 2, 1);
     }
+    // level: accent part, then the red zone
+    const drawSeg = (from, to, col) => {
+      if (to <= from) return;
+      c.fillStyle = col;
+      if (horiz) c.fillRect(len(from), 0, len(to) - len(from), h - 2);
+      else c.fillRect(2, h - len(to), w - 2, len(to) - len(from));
+    };
+    drawSeg(0, Math.min(v, red), this.cols.a5);
+    drawSeg(red, v, RED);
+    // peak hold
+    if (hp > 0.01) {
+      c.fillStyle = hp >= red ? RED : this.cols.n1;
+      if (horiz) c.fillRect(Math.min(w - 1.5, len(hp)), 0, 1.5, h - 2);
+      else c.fillRect(2, Math.max(0, h - len(hp) - 1.5), w - 2, 1.5);
+    }
+    // 0 dBFS line — solid when the meter has clipped
+    c.fillStyle = e.clip ? RED : 'color-mix(in srgb, #e0483c 45%, transparent)';
+    if (horiz) c.fillRect(w - 1.5, 0, 1.5, h); else c.fillRect(0, 0, w, 1.5);
   }
   // Oscilloscope: zero-crossing triggered (stable image) + min/max per pixel column.
   drawScope(el, an) {
@@ -187,8 +254,11 @@ export default class App extends React.Component {
     }
     return out;
   }
-  async handleFiles(fileList) {
-    const errs = []; let st = [...this.state.stems], midi = this.state.midi;
+  // `replace` starts from an empty set instead of the current one. It is passed
+  // explicitly rather than read back from state, because a caller that just
+  // called setState({stems: []}) would otherwise still see the old list here.
+  async handleFiles(fileList, replace = false) {
+    const errs = []; let st = replace ? [] : [...this.state.stems], midi = replace ? null : this.state.midi;
     this.setState({ reading: 'archive' });
     const files = await this.expandFiles(fileList, errs);
     for (const f of files) {
@@ -203,7 +273,7 @@ export default class App extends React.Component {
         } else errs.push(f.name + ': unsupported type (need .wav, .mid or .zip)');
       } catch (err) { errs.push(err.message); }
     }
-    let bpm = this.state.bpm, bpmSource = this.state.bpmSource;
+    let bpm = replace ? '' : this.state.bpm, bpmSource = replace ? '' : this.state.bpmSource;
     if (midi && !bpm) {
       const cand = (midi.fileName.match(/\d{2,3}(?:\.\d+)?/g) || []).map(Number).find(n => n >= 50 && n <= 250);
       if (cand) { bpm = String(cand); bpmSource = 'detected from file name “' + midi.fileName + '” — confirm before processing'; }
@@ -227,8 +297,8 @@ export default class App extends React.Component {
       this.demoNames = demo.regionNames;
       const files = demo.files.map(f => ({ name: f.name, arrayBuffer: () => Promise.resolve(f.data) }));
       files.push({ name: demo.midi.name, arrayBuffer: () => Promise.resolve(demo.midi.data) });
-      this.setState({ stems: [], midi: null, bpm: '', abbrev: demo.abbrev, analysis: null, regions: null });
-      await this.handleFiles(files);
+      this.setState({ abbrev: demo.abbrev, analysis: null, regions: null, edits: {}, past: [], future: [], sel: null });
+      await this.handleFiles(files, true);
       this.setState({ demoLoading: false });
     }, 30);
   };
@@ -305,33 +375,76 @@ export default class App extends React.Component {
     this.fillSlices(a.stemData, a.regs, a.bounds, core.dbToLin(this.state.threshold), warnings);
     this.blobCache = {};
     this.setState({ analysis: { ...a, warnings, v: Date.now() } });
+    this.queueReschedule();
+  }
+  // Edits made during playback take effect immediately: re-cue what is playing
+  // from the current position. Coalesced so a drag doesn't thrash the graph.
+  queueReschedule() {
+    if (!this.state.playing || this._resQ) return;
+    this._resQ = setTimeout(() => { this._resQ = null; this.rescheduleNow(); }, 90);
+  }
+  rescheduleNow() {
+    if (!this.state.playing || !this._ctx) return;
+    const ctx = this._ctx, tSwitch = ctx.currentTime + 0.05;
+    for (const s of this.sources) { try { s.stop(tSwitch); } catch (e) {} }
+    this.sources = []; clearTimeout(this._pump);
+    if (this.loopInfo) {
+      this.nextIter = Math.max(0, Math.floor((tSwitch - this.loopT0) * SR / this.loopInfo.len));
+      this.pumpLoop();
+    } else {
+      const pos = this.start0 + (tSwitch - this.t0) * SR;
+      this.start0 = pos; this.t0 = tSwitch;
+      this.scheduleLinear(pos, tSwitch);
+    }
   }
 
-  // ---------- slice edits ----------
-  setEdit(stemId, regionIdx, patch) {
+  // ---------- slice edits (with undo history) ----------
+  applyEdits(edits, record = true) {
+    this.setState(s => record ? { edits, past: [...s.past, s.edits].slice(-200), future: [] } : { edits },
+      () => this.rebuildSlices());
+  }
+  setEdit(stemId, regionIdx, patch, record = true) {
     const edits = { ...this.state.edits }, forStem = { ...(edits[stemId] || {}) };
     const next = { ...(forStem[regionIdx] || {}), ...patch };
     if (next.del == null && next.a == null) delete forStem[regionIdx]; else forStem[regionIdx] = next;
     edits[stemId] = forStem;
-    this.setState({ edits }, () => this.rebuildSlices());
+    this.applyEdits(edits, record);
   }
+  undo = () => {
+    const { past, edits, future } = this.state;
+    if (!past.length) return;
+    this.setState({ edits: past[past.length - 1], past: past.slice(0, -1), future: [edits, ...future].slice(0, 200) },
+      () => this.rebuildSlices());
+  };
+  redo = () => {
+    const { future, edits, past } = this.state;
+    if (!future.length) return;
+    this.setState({ edits: future[0], future: future.slice(1), past: [...past, edits].slice(-200) },
+      () => this.rebuildSlices());
+  };
   editCount() { return Object.values(this.state.edits).reduce((n, m) => n + Object.keys(m).length, 0); }
   deleteSelected = () => { const s = this.state.sel; if (s) this.setEdit(s.stemId, s.regionIdx, { del: true, a: null, b: null }); };
-  resetEdits = () => this.setState({ edits: {} }, () => this.rebuildSlices());
+  resetEdits = () => this.applyEdits({});
   startTrim = (stemId, regionIdx, side, e) => {
     e.stopPropagation(); e.preventDefault();
     const a = this.state.analysis, sd = a.stemData.find(x => x.id === stemId);
     const sl = sd && sd.slices.find(x => x.region.idx === regionIdx); if (!sl) return;
-    const st = { x0: e.clientX, a0: sl.aM, b0: sl.bM, r: sl.region };
+    // one history entry per drag, not per pixel
+    const before = this.state.edits;
+    const lim = core.trimLimits(sd.slices, regionIdx, a.regs);
+    const st = { x0: e.clientX, a0: sl.aM, b0: sl.bM };
     let lastA = sl.aM, lastB = sl.bM;
     const move = (ev) => {
       const d = Math.round((ev.clientX - st.x0) / this.state.ppm);
       let a2 = st.a0, b2 = st.b0;
-      if (side === 'l') a2 = Math.max(st.r.start, Math.min(st.b0, st.a0 + d));
-      else b2 = Math.min(st.r.end - 1, Math.max(st.a0, st.b0 + d));
-      if (a2 !== lastA || b2 !== lastB) { lastA = a2; lastB = b2; this.setEdit(stemId, regionIdx, { a: a2, b: b2, del: null }); }
+      if (side === 'l') a2 = Math.max(lim.minA, Math.min(st.b0, st.a0 + d));
+      else b2 = Math.min(lim.maxB, Math.max(st.a0, st.b0 + d));
+      if (a2 !== lastA || b2 !== lastB) { lastA = a2; lastB = b2; this.setEdit(stemId, regionIdx, { a: a2, b: b2, del: null }, false); }
     };
-    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    const up = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+      if (lastA !== st.a0 || lastB !== st.b0) this.setState(s => ({ past: [...s.past, before].slice(-200), future: [] }));
+    };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
 
@@ -607,6 +720,9 @@ export default class App extends React.Component {
   // ---------- export ----------
   download(name, blob) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
   fileBase(stem, i) { const ab = ((this.state.abbrev || 'Song').trim() || 'Song').replace(/[\\/:*?"<>|]/g, ''); return (i + 1) + ' ' + stem.name.replace(/[\\/:*?"<>|]/g, '') + ' ' + ab; }
+  safeName(s, fallback) { const v = (s || '').trim().replace(/[\\/:*?"<>|]/g, '').replace(/\.zip$/i, ''); return v || fallback; }
+  stemsZipName() { return this.safeName(this.state.zipName, ((this.state.abbrev || 'OSSC').trim() || 'OSSC') + ' stems'); }
+  projFolderName() { return this.safeName(this.state.projName, (this.state.project ? this.state.project.folder : 'PROJECT') + ' OSSC'); }
   sheetHtml(withSetup) {
     const a = this.state.analysis, S = this.state;
     const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
@@ -639,7 +755,7 @@ export default class App extends React.Component {
     this.setState({ projBusy: true, projReport: null });
     await new Promise(r => setTimeout(r, 20));
     try {
-      const entries = [], rep = [], folder = p.folder + ' OSSC', slotEntries = [], markerEntries = [];
+      const entries = [], rep = [], folder = this.projFolderName(), slotEntries = [], markerEntries = [];
       let sawMarkers = false;
       S.stems.forEach((stem, i) => {
         const sd = a.stemData.find(x => x.id === stem.id);
@@ -654,11 +770,14 @@ export default class App extends React.Component {
       if (S.stems.length > 8) rep.push({ warn: 1, text: 'Octatrack has 8 audio tracks — stems 9+ are not programmed' });
       for (const r of a.regs) {
         if (!r.scale.ok) { rep.push({ warn: 1, text: 'Region ' + r.idx + ' > 32 bars — pattern ' + r.bp + ' not programmed' }); continue; }
+        // a slice trimmed across a section boundary is trigged from the pattern
+        // that owns its first bar, which may not be its own section
         const tracks = [];
         S.stems.slice(0, 8).forEach((stem, i) => {
           const sd2 = a.stemData.find(x => x.id === stem.id);
-          const sl = sd2 && sd2.slices.find(x => x.region.idx === r.idx);
-          if (sl && sl.num <= 64) tracks.push({ trackIdx: i, trigs: [{ step: sl.trig, slice: sl.num - 1 }] });
+          const trigs = (sd2 ? sd2.slices : []).filter(sl => sl.trigRegionIdx === r.idx && sl.num <= 64)
+            .map(sl => ({ step: sl.trig, slice: sl.num - 1 }));
+          if (trigs.length) tracks.push({ trackIdx: i, trigs });
         });
         const bankNo = 2 + Math.floor((r.idx - 1) / 16);
         (bankJobs[bankNo] = bankJobs[bankNo] || []).push({ patternIdx: (r.idx - 1) % 16, LEN: r.scale.LEN, mult: r.scale.mult, tracks });
@@ -666,8 +785,8 @@ export default class App extends React.Component {
       let banks = 0, slotsOk = false, banksWritten = 0, trigsTotal = 0;
       const banksNeeded = new Set(Object.keys(bankJobs).map(Number));
       for (const f of p.fileList) {
-        const rel = (f.webkitRelativePath || f.name).split('/').slice(1).join('/') || f.name;
-        const buf = new Uint8Array(await f.arrayBuffer());
+        const rel = f.rel;
+        const buf = await f.bytes();
         const bm = rel.match(/^bank(\d+)\.work$/i);
         if (/^project\.work$/i.test(rel)) {
           const res = core.writeStaticSlots(core.decodeLatin1(buf), slotEntries, parseFloat(S.bpm));
@@ -708,7 +827,7 @@ export default class App extends React.Component {
         }
       }
       if (!sawMarkers) rep.push({ warn: 1, text: 'markers.work not found in the project folder — slices won\'t appear until each slot\'s sample is reloaded once on the device' });
-      banksNeeded.forEach(n => { if (![...p.fileList].some(f => new RegExp('^bank' + String(n).padStart(2, '0') + '\\.work$', 'i').test((f.webkitRelativePath || f.name).split('/').pop()))) rep.push({ warn: 1, text: 'bank' + String(n).padStart(2, '0') + '.work not found — its regions were not programmed' }); });
+      banksNeeded.forEach(n => { if (!p.fileList.some(f => new RegExp('^bank' + String(n).padStart(2, '0') + '\\.work$', 'i').test(f.rel))) rep.push({ warn: 1, text: 'bank' + String(n).padStart(2, '0') + '.work not found — its regions were not programmed' }); });
       entries.push({ name: 'PATTERNS.html', data: new TextEncoder().encode(this.sheetHtml(true)) });
       rep.unshift({ text: 'PATTERNS.html reference sheet added (verification aid + manual fallback)' });
       rep.unshift({ text: (banksWritten ? banksWritten + ' bank(s) pattern-programmed with ' + trigsTotal + ' trigs; ' : '') + 'all other bank files copied byte-identical — parts and scenes untouched in every bank' });
@@ -738,7 +857,7 @@ export default class App extends React.Component {
       entries.push({ name: base + '.wav', data: this.stemWavBytes(sd, stem) });
       entries.push({ name: base + '.ot', data: core.writeOt(parseFloat(this.state.bpm), sd.totalFrames, sd.slices.map(s => ({ start: s.outStart, end: s.outEnd }))) });
     });
-    this.download(((this.state.abbrev || 'OSSC').trim()) + ' stems.zip', core.makeZip(entries));
+    this.download(this.stemsZipName() + '.zip', core.makeZip(entries));
     this.setState({ zipBusy: false });
   };
   exportCsv = () => {
@@ -759,20 +878,44 @@ export default class App extends React.Component {
   };
 
   // ---------- project ----------
-  onProjectInput = async (e) => {
-    const files = [...e.target.files];
-    if (!files.length) return;
-    const folder = (files[0].webkitRelativePath || '').split('/')[0] || 'project';
-    const banks = files.filter(f => /^bank\d+\.(work|strd)$/i.test(f.name)).map(f => f.name).sort();
-    const pw = files.find(f => /^project\.work$/i.test(f.name));
+  // Accepts a picked folder, a dropped folder, or a .zip of either.
+  async loadProject(items) {
+    let flat = [];
+    for (const it of items) {
+      if (/\.zip$/i.test(it.path)) {
+        try {
+          const entries = await core.readZip(await it.file.arrayBuffer());
+          for (const e of entries) flat.push({ path: e.name, data: e.data });
+        } catch (err) { this.setState({ project: null, projReport: [{ warn: 1, text: it.path + ': ' + err.message }] }); return; }
+      } else flat.push(it);
+    }
+    const norm = core.normalizeProject(flat);
+    if (!norm) {
+      this.setState({ project: { folder: '—', files: flat.length, banks: [], os: 'not found', warn: 'No project.work found — is this an Octatrack project folder (or a zip of one)?', fileList: [] }, projReport: null });
+      return;
+    }
+    const fileList = norm.files.map(f => ({ rel: f.rel, bytes: async () => f.data ? f.data : new Uint8Array(await f.file.arrayBuffer()) }));
+    const banks = fileList.filter(f => /^bank\d+\.(work|strd)$/i.test(f.rel)).map(f => f.rel).sort();
+    const pw = fileList.find(f => /^project\.work$/i.test(f.rel));
     let os = 'not found', warn = '';
     if (pw) {
-      const pi = core.parseProjectText(core.decodeLatin1(new Uint8Array(await pw.arrayBuffer())));
+      const pi = core.parseProjectText(core.decodeLatin1(await pw.bytes()));
       os = pi.osVersion || 'unreadable';
       if (!/OCTATRACK/i.test(pi.projType)) warn = 'project.work does not look like an Octatrack project file — generation may produce an unusable copy.';
       else if (!/^1\.40[ABC]$/.test(os)) warn = 'Project OS ' + os + ' — slot writing verified for OS 1.40 A/B/C only; verify on device.';
-    } else warn = 'No project.work found — is this an Octatrack project folder?';
-    this.setState({ project: { folder, files: files.length, banks, os, warn, fileList: files }, projReport: null });
+    }
+    this.setState({ project: { folder: norm.folder, files: fileList.length, banks, os, warn, fileList }, projName: '', projReport: null });
+  }
+  onProjectInput = async (e) => {
+    const files = [...e.target.files];
+    if (files.length) await this.loadProject(files.map(f => ({ path: f.webkitRelativePath || f.name, file: f })));
+    e.target.value = '';
+  };
+  onProjectDrop = async (e) => {
+    e.preventDefault();
+    this.setState({ projDropping: false });
+    const items = await core.filesFromDataTransfer(e.dataTransfer);
+    if (items.length) await this.loadProject(items);
   };
 
   // ---------- resizing ----------
@@ -797,10 +940,16 @@ export default class App extends React.Component {
       metaLabel: S.abbrev || S.midi ? [(S.abbrev || '').trim(), S.stems.length ? S.stems.length + ' stems' : '', bpm ? bpm + ' BPM' : ''].filter(Boolean).join(' · ') : '',
       stepsVm: steps.map(([id, label, en]) => ({ label, cls: S.step === id ? 'on' : '', disabled: !en, onClick: () => en && set({ step: id }) })),
       isFiles: S.step === 'files', isTempo: S.step === 'tempo', isRegions: S.step === 'regions', isResults: S.step === 'results', isExport: S.step === 'export', isProject: S.step === 'project',
+      theme: S.theme,
+      themes: THEMES.map(t => ({ ...t, on: S.theme === t.id, onClick: () => set({ theme: t.id }) })),
     };
     // files
+    // window-level handlers do the real work; these keep the box highlighted
     vals.onDragOver = e => e.preventDefault();
-    vals.onDrop = e => { e.preventDefault(); this.handleFiles([...e.dataTransfer.files]); };
+    vals.onDragLeave = e => e.preventDefault();
+    vals.onDrop = e => e.preventDefault();
+    vals.dropping = !!S.dragging;
+    vals.dragging = !!S.dragging;
     vals.fileInputRef = el => this.fi = el;
     vals.onPickFiles = () => this.fi && this.fi.click();
     vals.onFileInput = e => { this.handleFiles([...e.target.files]); e.target.value = ''; };
@@ -905,6 +1054,9 @@ export default class App extends React.Component {
       vals.goExport = () => set({ step: 'export' });
       vals.editCount = this.editCount();
       vals.onResetEdits = this.resetEdits;
+      vals.canUndo = S.past.length > 0; vals.canRedo = S.future.length > 0;
+      vals.onUndo = this.undo; vals.onRedo = this.redo;
+      vals.meterTicks = core.MASTER_TICKS.map(db => ({ db, pct: core.dbPos(db) * 100, label: db === 0 ? '0' : String(db) }));
       const selKey = S.sel ? S.sel.stemId + ':' + S.sel.regionIdx : '';
       const selRegionIdx = S.sel ? S.sel.regionIdx : -1;
       vals.regionBlocks = a.regs.map(r => {
@@ -972,8 +1124,14 @@ export default class App extends React.Component {
           meterRef: el => { if (el) this.meterEls[stem.id] = el; },
           scopeRef: el => { if (el) this.scopeEls[stem.id] = el; },
           op: (anySolo ? stem.solo : !stem.muted) ? 1 : 0.35,
-          onMute: () => { const st = S.stems.map(x => x.id === stem.id ? Object.assign(x, { muted: !x.muted }) : x); set({ stems: [...st] }); this.updateGains(); },
-          onSolo: () => { const st = S.stems.map(x => x.id === stem.id ? Object.assign(x, { solo: !x.solo }) : x); set({ stems: [...st] }); this.updateGains(); },
+          onMute: () => { const st = S.stems.map(x => x.id === stem.id ? { ...x, muted: !x.muted } : x); set({ stems: st }); this.updateGains(); },
+          // plain click solos this track alone; shift-click adds to the solo group
+          onSolo: (e) => {
+            const soloed = S.stems.filter(x => x.solo);
+            const only = soloed.length === 1 && soloed[0].id === stem.id;
+            const st = S.stems.map(x => ({ ...x, solo: e.shiftKey ? (x.id === stem.id ? !x.solo : x.solo) : (x.id === stem.id ? !only : false) }));
+            set({ stems: st }); this.updateGains();
+          },
           ghosts: (sd ? sd.ghosts : []).map(g => ({
             k: g.region.idx, left: g.region.start * ppm, width: Math.max(4, g.region.len * ppm - 2),
             tip: (g.deleted ? 'Deleted' : 'Below threshold') + ' — click to add a slice for ' + (g.region.name || 'region ' + g.region.idx),
@@ -1013,15 +1171,20 @@ export default class App extends React.Component {
           vals.selTitle = stem.name + ' · Slice ' + sl.num;
           vals.selRegion = String(sl.region.idx).padStart(2, '0') + (sl.region.name ? ' ' + sl.region.name.toUpperCase() : '') + ' (' + sl.region.bp + ')';
           vals.selFromBar = sl.aM + 1;
-          vals.selPatternBar = sl.aM - sl.region.start + 1;
+          vals.selPatternBar = sl.aM - sl.trigRegion.start + 1;
           vals.selTrig = sl.trig;
+          vals.selMovedTrig = sl.movedTrig;
+          vals.selTrigPattern = sl.trigRegion.bp;
           vals.selEdited = sl.edited;
           vals.selSamples = (sl.bM - sl.aM + 1) + ' bars · smp ' + sl.start.toLocaleString() + '–' + sl.end.toLocaleString();
           vals.onAudition = () => this.audition(S.sel);
           vals.onDeleteSel = this.deleteSelected;
           vals.onResetSel = () => this.setEdit(S.sel.stemId, S.sel.regionIdx, { del: null, a: null, b: null });
           vals.onNudge = (side, d) => {
-            const patch = side === 'l' ? { a: Math.max(sl.region.start, Math.min(sl.bM, sl.aM + d)), b: sl.bM } : { a: sl.aM, b: Math.min(sl.region.end - 1, Math.max(sl.aM, sl.bM + d)) };
+            const lim = core.trimLimits(sd.slices, S.sel.regionIdx, a.regs);
+            const patch = side === 'l'
+              ? { a: Math.max(lim.minA, Math.min(sl.bM, sl.aM + d)), b: sl.bM }
+              : { a: sl.aM, b: Math.min(lim.maxB, Math.max(sl.aM, sl.bM + d)) };
             this.setEdit(S.sel.stemId, S.sel.regionIdx, { ...patch, del: null });
           };
         }
@@ -1067,12 +1230,22 @@ export default class App extends React.Component {
       vals.exportSummary = nF * 2 + ' files · ' + (totB / 1048576).toFixed(1) + ' MB total';
       vals.onZip = this.exportZip; vals.zipBusy = S.zipBusy;
       vals.zipLabel = S.zipBusy ? 'Packing ZIP…' : 'Download all (ZIP)';
+      vals.zipName = S.zipName; vals.zipNamePh = this.stemsZipName();
+      vals.onZipName = e => set({ zipName: e.target.value });
       vals.goProject = () => set({ step: 'project' });
     }
     // project
     vals.dirInputRef = el => this.di = el;
+    vals.zipInputRef = el => this.zi = el;
     vals.onPickProject = () => this.di && this.di.click();
+    vals.onPickProjectZip = () => this.zi && this.zi.click();
     vals.onProjectInput = this.onProjectInput;
+    vals.onProjectDrop = e => e.preventDefault();
+    vals.onProjectDragOver = e => e.preventDefault();
+    vals.onProjectDragLeave = e => e.preventDefault();
+    vals.projDropping = !!S.dragging;
+    vals.projName = S.projName; vals.projNamePh = this.projFolderName();
+    vals.onProjName = e => set({ projName: e.target.value });
     vals.hasProject = !!S.project; vals.noProject = !S.project;
     if (S.project) {
       const p = S.project;
@@ -1098,8 +1271,17 @@ export default class App extends React.Component {
 
   render() {
     const vals = this.buildVals();
+    const dropStep = this.dropStep();
     return (
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        {this.state.dragging && dropStep && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'grid', placeItems: 'center', background: 'color-mix(in srgb, var(--color-bg) 72%, transparent)', border: '2px dashed var(--color-accent)', pointerEvents: 'none' }}>
+            <div style={{ fontSize: 17, color: 'var(--color-accent-200)', textAlign: 'center', lineHeight: 1.7 }}>
+              {dropStep === 'project' ? 'Drop the Octatrack project folder or .zip' : 'Drop stems, a folder, or a .zip'}
+              <div style={{ fontSize: 12, color: 'var(--color-neutral-400)' }}>anywhere on this pane</div>
+            </div>
+          </div>
+        )}
         <Header vals={vals} />
         {vals.isFiles && <FilesStep vals={vals} />}
         {vals.isTempo && <TempoStep vals={vals} />}

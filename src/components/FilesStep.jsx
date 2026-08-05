@@ -2,11 +2,11 @@ export default function FilesStep({ vals }) {
   return (
     <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'minmax(340px,420px) 1fr', gap: 18, padding: '22px 24px', alignContent: 'start' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div className="drop" onDragOver={vals.onDragOver} onDrop={vals.onDrop} onClick={vals.onPickFiles} style={{ padding: '36px 24px' }}>
+        <div className={'drop' + (vals.dropping ? ' dropping' : '')} onDragOver={vals.onDragOver} onDragLeave={vals.onDragLeave} onDrop={vals.onDrop} onClick={vals.onPickFiles} style={{ padding: '36px 24px' }}>
           <div style={{ fontSize: 15, color: 'var(--color-neutral-200)', marginBottom: 6 }}>Drop stems + arrangement MIDI</div>
           <div style={{ fontSize: 12, color: 'var(--color-neutral-500)', lineHeight: 1.6 }}>
             5–6 stereo WAV stems (44.1 kHz, 16/24-bit)<br />plus one MIDI file — a note at each section start<br />and one final note at the song's end<br />
-            <span style={{ color: 'var(--color-neutral-600)' }}>a .zip of all of them works too</span>
+            <span style={{ color: 'var(--color-neutral-600)' }}>drop a folder or a .zip of them all — that works too</span>
           </div>
           <div style={{ marginTop: 14 }}><span className="btn btn-secondary" style={{ fontSize: 12, pointerEvents: 'none' }}>Browse files</span></div>
           {vals.isReading && <div className="pulse" style={{ marginTop: 10, fontSize: 11.5, color: 'var(--color-accent-300)' }}>{vals.readingLabel}</div>}
