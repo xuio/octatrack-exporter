@@ -63,7 +63,14 @@ export function makeDemo(id) {
 }
 
 function writeMidi(ppq, bpm, measures) {
-  const ev = [], vlq = n => { const b = [n & 127]; while (n >>= 7) b.unshift((n & 127) | 128); return b; };
+  const ev = [];
+  // variable-length quantity: 7 bits per byte, high bit set on all but the last
+  const vlq = (n) => {
+    const bytes = [n & 127];
+    let rest = n >> 7;
+    while (rest > 0) { bytes.unshift((rest & 127) | 128); rest >>= 7; }
+    return bytes;
+  };
   const us = Math.round(60000000 / bpm);
   ev.push(0, 0xFF, 0x51, 3, (us >> 16) & 255, (us >> 8) & 255, us & 255);
   let last = 0;

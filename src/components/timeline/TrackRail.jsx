@@ -4,7 +4,7 @@ import Oscilloscope from '../ui/Oscilloscope.jsx';
 
 /** The fixed left column: track name, mute/solo, scope and meter. */
 export default function TrackRail({
-  stems, mixer, width, laneHeight, scopeMode, scopeWidth, colors, analyserFor, active,
+  stems, mixer, laneHeight, scopeMode, scopeWidth, colors, analyserFor, active,
   onRename, onMute, onSolo, onResizeWidth, onResizeHeight,
 }) {
   return (

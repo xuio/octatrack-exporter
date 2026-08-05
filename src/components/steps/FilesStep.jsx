@@ -41,7 +41,7 @@ export default function FilesStep({ stems, midi, error, reading, demoLoading, dr
           <div style={{ fontSize: 12, color: 'var(--color-neutral-500)', lineHeight: 1.6 }}>
             5–6 stereo WAV stems (44.1 kHz, 16/24-bit)<br />
             plus one MIDI file — a note at each section start<br />
-            and one final note at the song's end<br />
+            and one final note at the song&apos;s end<br />
             <span style={{ color: 'var(--color-neutral-600)' }}>drop a folder or a .zip of them all — that works too</span>
           </div>
           <div style={{ marginTop: 14 }}>

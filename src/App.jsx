@@ -9,7 +9,7 @@ import ProjectStep from './components/steps/ProjectStep.jsx';
 import DropOverlay from './components/ui/DropOverlay.jsx';
 
 import { usePrefs } from './state/usePrefs.js';
-import { useStems, validateStems, isAudible } from './state/useStems.js';
+import { useStems, validateStems } from './state/useStems.js';
 import { useRegions, useAnalysisBase, useTracks } from './state/useAnalysis.js';
 import { useSliceEdits } from './state/useSliceEdits.js';
 import { useTransport } from './state/useTransport.js';

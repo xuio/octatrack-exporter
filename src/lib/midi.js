@@ -8,7 +8,8 @@ export function parseMidi(buf, fileName) {
   if (tag(0) !== 'MThd') throw new Error(fileName + ': not a MIDI file');
   const ntrks = dv.getUint16(10), division = dv.getUint16(12);
   if (division & 0x8000) throw new Error(fileName + ': SMPTE time division not supported');
-  let off = 8 + dv.getUint32(4), ticks = [], bpm = null;
+  let off = 8 + dv.getUint32(4), bpm = null;
+  const ticks = [];
   for (let t = 0; t < ntrks && off + 8 <= u8.length; t++) {
     if (tag(off) !== 'MTrk') break;
     const end = off + 8 + dv.getUint32(off + 4); let p = off + 8, abs = 0, run = 0;

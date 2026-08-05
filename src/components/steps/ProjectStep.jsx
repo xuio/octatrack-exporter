@@ -22,7 +22,7 @@ const writePlan = (stemCount, regionCount) => [
 /** Step 6: rewrite a copy of the user's own project folder. */
 export default function ProjectStep({
   project, dragging, stemCount, regionCount, folderName, folderPlaceholder, busy, report,
-  onPickFolder, onPickZip, onFiles, onFolderName, onGenerate,
+  onFiles, onFolderName, onGenerate,
 }) {
   const folderInput = useRef(null);
   const zipInput = useRef(null);
@@ -57,8 +57,8 @@ export default function ProjectStep({
         <div className="card" style={{ border: '1px solid var(--color-accent-800)' }}>
           <div className="card-kicker">Scene preservation</div>
           <div style={{ fontSize: 11.5, color: 'var(--color-neutral-400)', lineHeight: 1.6 }}>
-            Scenes live in a bank's part data. OSSC writes only the pattern sections: byte offsets are
-            verified against your own file's section markers before writing, and the part region is checked
+            Scenes live in a bank&apos;s part data. OSSC writes only the pattern sections: byte offsets are
+            verified against your own file&apos;s section markers before writing, and the part region is checked
             byte-identical afterwards — on any mismatch the bank is copied unchanged instead. Keep a backup
             and verify the first generated project on the device.
           </div>

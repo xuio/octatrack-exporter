@@ -207,11 +207,18 @@ sample-exact equality between source and export.
 ```bash
 npm install
 npm run dev        # dev server
-npm test           # binary-writer + slice-logic tests (node --test, no browser)
+npm run lint       # ESLint, incl. the react-hooks rules
+npm test           # core tests (node --test, no browser needed)
+npm run check      # lint + tests
 npm run build      # production build → dist/
 ```
 
-Pushing to `main` runs the tests, builds, and deploys to GitHub Pages
+Linting is not decoration here: `react-hooks/rules-of-hooks` and
+`exhaustive-deps` catch precisely the class of bug this codebase has actually
+hit — stale closures reading state before it flushed, and effects missing a
+dependency. CI runs `--max-warnings 0`, so a new warning fails the build.
+
+Pushing to `main` lints, tests, builds, and deploys to GitHub Pages
 ([`.github/workflows/pages.yml`](.github/workflows/pages.yml)).
 The README screenshots are regenerated with `node scripts/screenshots.mjs` against a running
 `npm run preview`.

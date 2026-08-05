@@ -24,7 +24,7 @@ export function useTimelineGestures({ base, ppm, tracks, edits, transport, paint
   const totalBars = base?.total ?? 0;
 
   /** Scrub: silence while dragging, resume from where it is dropped. */
-  const scrub = useCallback((barAt) => (e) => {
+  const scrub = useCallback((barAt, e) => {
     if (!base) return;
     e.preventDefault();
     const wasPlaying = transport.playing;
@@ -41,23 +41,20 @@ export function useTimelineGestures({ base, ppm, tracks, edits, transport, paint
     );
   }, [base, totalBars, transport, paintBars]);
 
-  const scrubTimeline = useCallback(
-    scrub(e => {
-      const el = refs.scroller.current;
-      if (!el) return 0;
-      const rect = el.firstChild.getBoundingClientRect();
-      return Math.max(0, Math.min(totalBars - 0.001, (e.clientX - rect.left) / ppm));
-    }),
-    [scrub, refs, ppm, totalBars],
-  );
+  const barAtTimeline = useCallback((e) => {
+    const el = refs.scroller.current;
+    if (!el) return 0;
+    const rect = el.firstChild.getBoundingClientRect();
+    return Math.max(0, Math.min(totalBars - 0.001, (e.clientX - rect.left) / ppm));
+  }, [refs, ppm, totalBars]);
 
-  const scrubOverview = useCallback(
-    scrub(e => {
-      const rect = refs.overview.current.getBoundingClientRect();
-      return Math.max(0, Math.min(totalBars - 0.001, ((e.clientX - rect.left) / rect.width) * totalBars));
-    }),
-    [scrub, refs, totalBars],
-  );
+  const barAtOverview = useCallback((e) => {
+    const rect = refs.overview.current.getBoundingClientRect();
+    return Math.max(0, Math.min(totalBars - 0.001, ((e.clientX - rect.left) / rect.width) * totalBars));
+  }, [refs, totalBars]);
+
+  const scrubTimeline = useCallback((e) => scrub(barAtTimeline, e), [scrub, barAtTimeline]);
+  const scrubOverview = useCallback((e) => scrub(barAtOverview, e), [scrub, barAtOverview]);
 
   /**
    * Trim a clip edge. The span is recomputed from the layout captured at

@@ -47,7 +47,6 @@ export default function Timeline({
         <TrackRail
           stems={stems}
           mixer={mixer}
-          width={railWidth}
           laneHeight={laneHeight}
           scopeMode={scopeMode}
           scopeWidth={Math.max(40, Math.min(200, railWidth - 148))}
