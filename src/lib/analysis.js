@@ -20,6 +20,13 @@ export function trimRegion(peaks, start, end, thLin) {
   return { a, b };
 }
 
+// Waveform detail follows zoom: pick a power-of-two bucket count near the slice's
+// on-screen width, so paths stay cacheable across small zoom steps.
+export function bucketTier(px) {
+  const want = Math.max(32, Math.min(2048, px));
+  return Math.max(64, Math.min(2048, Math.pow(2, Math.round(Math.log2(want)))));
+}
+
 export function waveBands(chL, chR, s0, s1, buckets) {
   const n = Math.max(2, buckets), len = s1 - s0;
   const peak = new Float32Array(n), low = new Float32Array(n), high = new Float32Array(n);

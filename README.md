@@ -6,10 +6,10 @@ Turn a song's stems + an arrangement MIDI file into a fully prepared **Elektron 
 
 ## What it does
 
-1. **Files** — drop 5–6 stereo WAV stems (44.1 kHz, 16/24-bit; other formats are converted) plus one MIDI file containing a note at each section start and a final note at the song's end. A synthesized demo song is built in if you just want to try it.
+1. **Files** — drop 5–6 stereo WAV stems (44.1 kHz, 16/24-bit; other formats are converted) plus one MIDI file containing a note at each section start and a final note at the song's end. A `.zip` containing all of them works too. A synthesized demo song is built in if you just want to try it.
 2. **Tempo** — confirm the session BPM (detected from the MIDI file name or tempo event). Every cut is computed from it.
 3. **Regions** — each MIDI-marked section becomes one Octatrack pattern, starting at Bank 2 (Bank 1 stays free). Section length picks the pattern scale: ≤4 bars → 1x, ≤8 → 1/2x, ≤16 → 1/4x, ≤32 → 1/8x (16/8/4/2 trig keys per bar).
-4. **Results** — a DAW-style timeline with per-measure silence trimming (threshold adjustable live), waveforms, per-track meters/scopes/FFT, region looping, and a pattern table.
+4. **Results** — a DAW-style timeline: automatic per-measure silence trimming (threshold adjustable live), then edit by hand like a video editor — drag a slice's edges to trim it (bar-quantized, because trigs live on the bar grid), delete slices you don't want, and click a dashed placeholder to add one back. Also: whole-song overview strip for jumping, draggable playhead, pinch/⌘-scroll zoom with waveform detail that grows as you zoom, follow-the-playhead toggle, per-track meters, triggered oscilloscopes and spectrum analyzers, region looping that can be released without stopping playback, and resizable track column and track heights.
 5. **Export** — per-stem WAV chains (one slice per region, silence removed) + 832-byte `.ot` sidecars with the slice grid, as single files or one ZIP.
 6. **Project builder** — drop a default project folder saved from your Octatrack and get back a ready-to-play copy:
    - stem WAVs + `.ot` files placed **inside the project folder**
@@ -51,6 +51,8 @@ src/
     wav.js               WAV parse/encode (+conversion to 44.1k stereo)
     midi.js              MIDI parse, regions, pattern scale rules
     analysis.js          per-measure peaks, silence trim, waveform paths
+    slices.js            slice building: auto-trim + manual trim/delete edits
+    unzip.js             ZIP reading for archive uploads
     otFile.js            .ot sidecar writer
     zip.js               store-only ZIP + CSV
     projectFile.js       project.work parse/write (slots + tempo)

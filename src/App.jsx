@@ -8,43 +8,84 @@ import ResultsStep from './components/ResultsStep.jsx';
 import ExportStep from './components/ExportStep.jsx';
 import ProjectStep from './components/ProjectStep.jsx';
 
-export default class App extends React.Component {
-  static defaultProps = { defaultThresholdDb: -60, waveStyle: 'spectral', showScopes: true, compactLanes: false };
+const SR = 44100;
+const PREF_KEY = 'ossc.prefs.v1';
+const loadPrefs = () => { try { return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch { return {}; } };
 
-  state = {
-    step: 'files', stems: [], midi: null, filesError: '', demoLoading: false,
-    bpm: '', bpmSource: '', bpmError: '', abbrev: '', threshold: null, thDraft: null, bpmDraft: null,
-    regions: null, regionsMeta: null, analyzing: false, progress: '',
-    analysis: null, view: 'tl', ppm: 16, sel: null, playing: false, loopRegionIdx: null, waveStyle: 'spectral',
-    startMeasure: 1, vol: 0.85, showWarn: false, zipBusy: false, project: null, projBusy: false, projReport: null,
-  };
+export default class App extends React.Component {
+  static defaultProps = { defaultThresholdDb: -60, waveStyle: 'spectral', showScopes: true };
+
+  constructor(props) {
+    super(props);
+    const p = loadPrefs();
+    this.state = {
+      step: 'files', stems: [], midi: null, filesError: '', demoLoading: false,
+      bpm: '', bpmSource: '', bpmError: '', abbrev: '', threshold: p.threshold ?? props.defaultThresholdDb ?? -60, thDraft: null, bpmDraft: null,
+      regions: null, regionsMeta: null, analyzing: false, progress: '',
+      analysis: null, view: 'tl', ppm: 16, sel: null, playing: false, loopRegionIdx: null,
+      waveStyle: p.waveStyle ?? props.waveStyle ?? 'spectral', scopeMode: p.scopeMode ?? (props.showScopes ? 'scope' : 'off'),
+      startMeasure: 1, vol: 0.85, showWarn: false, zipBusy: false, project: null, projBusy: false, projReport: null,
+      edits: {}, follow: p.follow ?? true, railW: p.railW ?? 232, laneH: p.laneH ?? 50,
+      scrollX: 0, viewW: 0,
+    };
+  }
+
   core = core;
   ids = 1; sources = []; buffers = {}; gains = {}; blobCache = {}; analysers = {}; meterEls = {}; scopeEls = {}; envs = {};
+  bandCache = new Map(); pathCache = new Map();
 
   componentDidMount() {
-    if (this.state.threshold === null) this.setState({ threshold: this.props.defaultThresholdDb ?? -60, waveStyle: this.props.waveStyle ?? 'spectral', scopeMode: (this.props.showScopes ?? false) ? 'scope' : 'off' });
     this.meterRaf = requestAnimationFrame(this.meterTick);
     this.keyH = (e) => {
-      if (e.code === 'Space' && this.state.step === 'results' && !/INPUT|TEXTAREA/.test(e.target.tagName)) { e.preventDefault(); this.state.playing ? this.stop() : this.play(); }
+      if (this.state.step !== 'results' || /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+      if (e.code === 'Space') { e.preventDefault(); this.state.playing ? this.stop() : this.play(); }
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && this.state.sel) { e.preventDefault(); this.deleteSelected(); }
     };
     window.addEventListener('keydown', this.keyH);
   }
   componentWillUnmount() { window.removeEventListener('keydown', this.keyH); cancelAnimationFrame(this.meterRaf); this.stop(); }
+  componentDidUpdate(_, prev) {
+    const k = ['follow', 'railW', 'laneH', 'waveStyle', 'scopeMode', 'threshold'];
+    if (k.some(x => prev[x] !== this.state[x])) {
+      const o = {}; k.forEach(x => o[x] = this.state[x]);
+      try { localStorage.setItem(PREF_KEY, JSON.stringify(o)); } catch {}
+    }
+    this.syncOverview();
+  }
 
-  // ---------- meters & scopes ----------
-  analyserFor(id) { const ctx = this.ctx(); if (!this.analysers[id]) { const an = ctx.createAnalyser(); an.fftSize = 1024; this.analysers[id] = an; } return this.analysers[id]; }
+  // ---------- canvases ----------
+  sizeCanvas(el) {
+    const dpr = window.devicePixelRatio || 1, w = el.clientWidth, h = el.clientHeight;
+    if (!w || !h) return null;
+    if (el.width !== Math.round(w * dpr) || el.height !== Math.round(h * dpr)) { el.width = Math.round(w * dpr); el.height = Math.round(h * dpr); }
+    const c = el.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { c, w, h };
+  }
+  analyserFor(id) {
+    const ctx = this.ctx();
+    if (!this.analysers[id]) {
+      const an = ctx.createAnalyser();
+      an.fftSize = 2048; an.smoothingTimeConstant = 0.72; an.minDecibels = -95; an.maxDecibels = -10;
+      this.analysers[id] = an;
+    }
+    return this.analysers[id];
+  }
   meterTick = () => {
     this.meterRaf = requestAnimationFrame(this.meterTick);
     if (this.state.step !== 'results') return;
     if (!this.cols) {
       const cs = getComputedStyle(document.documentElement);
       const g = (n, f) => (cs.getPropertyValue(n) || '').trim() || f;
-      this.cols = { a5: g('--color-accent-500', '#968ae0'), a4: g('--color-accent-400', '#b5abfc'), a2: g('--color-accent-200', '#e7e5fe'), n1: g('--color-neutral-100', '#f3f5fe'), n8: g('--color-neutral-800', '#3f424d') };
+      this.cols = { a5: g('--color-accent-500', '#968ae0'), a4: g('--color-accent-400', '#b5abfc'), a3: g('--color-accent-300', '#d2cefd'), a2: g('--color-accent-200', '#e7e5fe'), a8: g('--color-accent-800', '#423a6a'), n1: g('--color-neutral-100', '#f3f5fe'), n8: g('--color-neutral-800', '#3f424d'), n9: g('--color-neutral-900', '#292b31') };
     }
-    const buf = this.anBuf || (this.anBuf = new Float32Array(1024));
     const lvl = (an, key) => {
       let pk = 0;
-      if (an) { an.getFloatTimeDomainData(buf); for (let i = 0; i < 1024; i++) { const v = Math.abs(buf[i]); if (v > pk) pk = v; } }
+      if (an) {
+        const N = an.fftSize;
+        if (!this.tdBuf || this.tdBuf.length !== N) this.tdBuf = new Float32Array(N);
+        an.getFloatTimeDomainData(this.tdBuf);
+        for (let i = 0; i < N; i++) { const v = Math.abs(this.tdBuf[i]); if (v > pk) pk = v; }
+      }
       const e = this.envs[key] || (this.envs[key] = { env: 0, hold: 0, ht: 0 });
       e.env = Math.max(pk, e.env * 0.86);
       if (pk >= e.hold) { e.hold = pk; e.ht = 40; } else if (--e.ht <= 0) e.hold *= 0.94;
@@ -54,12 +95,13 @@ export default class App extends React.Component {
       const an = this.analysers[stem.id], e = lvl(an, stem.id);
       if (this.meterEls[stem.id]) this.drawMeter(this.meterEls[stem.id], e, false);
       const sm = this.state.scopeMode;
-      if (sm && sm !== 'off' && this.scopeEls[stem.id]) (sm === 'fft' ? this.drawFft : this.drawScope).call(this, this.scopeEls[stem.id], an);
+      if (sm && sm !== 'off' && this.scopeEls[stem.id]) (sm === 'fft' ? this.drawFft : this.drawScope).call(this, this.scopeEls[stem.id], an, stem.id);
     }
     if (this.masterMeterEl) this.drawMeter(this.masterMeterEl, lvl(this.masterAn, 'master'), true);
   };
   drawMeter(el, e, horiz) {
-    const c = el.getContext('2d'), w = el.width, h = el.height;
+    const S = this.sizeCanvas(el); if (!S) return;
+    const { c, w, h } = S;
     c.clearRect(0, 0, w, h);
     const v = Math.min(1, Math.sqrt(e.env)), hp = Math.min(1, Math.sqrt(e.hold));
     c.fillStyle = this.cols.a5;
@@ -73,50 +115,92 @@ export default class App extends React.Component {
       if (hp > 0.02) { c.fillStyle = this.cols.n1; c.fillRect(0, Math.max(0, h - h * hp - 1.5), w, 1.5); }
     }
   }
+  // Oscilloscope: zero-crossing triggered (stable image) + min/max per pixel column.
   drawScope(el, an) {
-    const c = el.getContext('2d'), w = el.width, h = el.height;
+    const S = this.sizeCanvas(el); if (!S) return;
+    const { c, w, h } = S;
     c.clearRect(0, 0, w, h);
     c.strokeStyle = this.cols.n8; c.lineWidth = 1;
     c.beginPath(); c.moveTo(0, h / 2 + 0.5); c.lineTo(w, h / 2 + 0.5); c.stroke();
     if (!an) return;
-    const buf = this.anBuf; an.getFloatTimeDomainData(buf);
-    c.strokeStyle = this.cols.a4; c.beginPath();
-    for (let x = 0; x < w; x++) { const y = h / 2 - buf[(x * 1024 / w) | 0] * (h / 2 - 1); x ? c.lineTo(x + 0.5, y) : c.moveTo(0.5, y); }
+    const N = an.fftSize;
+    if (!this.tdBuf || this.tdBuf.length !== N) this.tdBuf = new Float32Array(N);
+    an.getFloatTimeDomainData(this.tdBuf);
+    const buf = this.tdBuf, half = N >> 1;
+    let t0 = 0;
+    for (let i = 1; i < half; i++) if (buf[i - 1] <= 0 && buf[i] > 0) { t0 = i; break; }
+    const span = Math.max(2, Math.min(half, N - t0));
+    const amp = h / 2 - 1;
+    c.strokeStyle = this.cols.a4; c.lineWidth = 1; c.beginPath();
+    for (let x = 0; x < w; x++) {
+      const s0 = t0 + Math.floor(x * span / w), s1 = Math.max(s0 + 1, t0 + Math.floor((x + 1) * span / w));
+      let mn = 1, mx = -1;
+      for (let i = s0; i < s1 && i < N; i++) { const v = buf[i]; if (v < mn) mn = v; if (v > mx) mx = v; }
+      if (mx < mn) continue;
+      const y0 = h / 2 - mx * amp, y1 = h / 2 - mn * amp;
+      c.moveTo(x + 0.5, y0); c.lineTo(x + 0.5, Math.max(y1, y0 + 0.7));
+    }
     c.stroke();
   }
-  drawFft(el, an) {
-    const c = el.getContext('2d'), w = el.width, h = el.height;
+  // Spectrum: log-spaced bands from real dB values, with decaying peak caps.
+  drawFft(el, an, key) {
+    const S = this.sizeCanvas(el); if (!S) return;
+    const { c, w, h } = S;
     c.clearRect(0, 0, w, h);
-    c.strokeStyle = this.cols.n8; c.lineWidth = 1;
-    c.beginPath(); c.moveTo(0, h - 0.5); c.lineTo(w, h - 0.5); c.stroke();
-    if (!an) return;
-    if (!this.fftBuf) this.fftBuf = new Uint8Array(512);
-    an.getByteFrequencyData(this.fftBuf);
-    const n = 18, bw = w / n;
+    if (!an || !this._ctx) return;
+    const bins = an.frequencyBinCount;
+    if (!this.fftF || this.fftF.length !== bins) this.fftF = new Float32Array(bins);
+    an.getFloatFrequencyData(this.fftF);
+    const nyq = this._ctx.sampleRate / 2, f0 = 30, f1 = Math.min(16000, nyq);
+    const n = Math.max(10, Math.min(56, Math.floor(w / 2.5))), bw = w / n;
+    const pk = this.envs['pk:' + key] && this.envs['pk:' + key].length === n ? this.envs['pk:' + key] : (this.envs['pk:' + key] = new Float32Array(n));
     for (let i = 0; i < n; i++) {
-      // log-spaced bins: bar i covers analyser bins 512^(i/n) .. 512^((i+1)/n)
-      const b0 = Math.floor(Math.pow(512, i / n)), b1 = Math.max(b0 + 1, Math.floor(Math.pow(512, (i + 1) / n)));
-      let m = 0; for (let b = b0; b < b1 && b < 512; b++) m = Math.max(m, this.fftBuf[b]);
-      const v = m / 255, bh = v * (h - 3);
-      if (bh < 0.5) continue;
-      c.fillStyle = this.cols.a5; c.fillRect(i * bw + 0.5, h - 1 - bh, bw - 1, bh);
-      if (v > 0.72) { c.fillStyle = this.cols.a2; c.fillRect(i * bw + 0.5, h - 1 - bh, bw - 1, bh - 0.72 * (h - 3)); }
+      const fa = f0 * Math.pow(f1 / f0, i / n), fb = f0 * Math.pow(f1 / f0, (i + 1) / n);
+      const b0 = Math.max(1, Math.floor(fa / nyq * bins)), b1 = Math.max(b0 + 1, Math.ceil(fb / nyq * bins));
+      let m = -Infinity;
+      for (let b = b0; b < b1 && b < bins; b++) if (this.fftF[b] > m) m = this.fftF[b];
+      const v = Math.max(0, Math.min(1, (m + 92) / 78)); // −92…−14 dBFS → 0…1
+      pk[i] = v >= pk[i] ? v : pk[i] * 0.93;
+      const bh = v * (h - 2);
+      if (bh > 0.4) {
+        c.fillStyle = v > 0.78 ? this.cols.a2 : this.cols.a5;
+        c.fillRect(i * bw + 0.5, h - bh, Math.max(1, bw - 1), bh);
+      }
+      if (pk[i] > 0.02) { c.fillStyle = this.cols.a3; c.fillRect(i * bw + 0.5, Math.max(0, h - pk[i] * (h - 2) - 1), Math.max(1, bw - 1), 1); }
     }
   }
 
   // ---------- files ----------
+  async expandFiles(fileList, errs) {
+    const out = [];
+    for (const f of fileList) {
+      if (/\.zip$/i.test(f.name)) {
+        try {
+          const entries = core.audioEntries(await core.readZip(await f.arrayBuffer()));
+          if (!entries.length) errs.push(f.name + ': no WAV or MIDI files inside');
+          for (const e of entries) {
+            const data = e.data.buffer.slice(e.data.byteOffset, e.data.byteOffset + e.data.byteLength);
+            out.push({ name: e.name.split('/').pop(), arrayBuffer: () => Promise.resolve(data) });
+          }
+        } catch (err) { errs.push(f.name + ': ' + err.message); }
+      } else out.push(f);
+    }
+    return out;
+  }
   async handleFiles(fileList) {
     const errs = []; let st = [...this.state.stems], midi = this.state.midi;
-    for (const f of fileList) {
+    this.setState({ reading: 'archive' });
+    const files = await this.expandFiles(fileList, errs);
+    for (const f of files) {
       try {
         this.setState({ reading: f.name });
-        await new Promise(r => setTimeout(r, 25));
+        await new Promise(r => setTimeout(r, 20));
         const buf = await f.arrayBuffer();
         if (/\.(mid|midi)$/i.test(f.name)) midi = core.parseMidi(buf, f.name);
         else if (/\.wav$/i.test(f.name)) {
           const p = core.parseWav(buf, f.name);
           st.push({ id: this.ids++, name: f.name.replace(/\.wav$/i, '').replace(/[_-]?\d+$/, '').toUpperCase().slice(0, 20) || 'STEM', muted: false, solo: false, ...p });
-        } else errs.push(f.name + ': unsupported type (need .wav or .mid)');
+        } else errs.push(f.name + ': unsupported type (need .wav, .mid or .zip)');
       } catch (err) { errs.push(err.message); }
     }
     let bpm = this.state.bpm, bpmSource = this.state.bpmSource;
@@ -126,7 +210,7 @@ export default class App extends React.Component {
       else if (midi.bpm) { bpm = String(midi.bpm); bpmSource = 'from MIDI tempo event — confirm before processing'; }
       else { bpm = '120'; bpmSource = 'no tempo found — enter the session BPM'; }
     }
-    this.setState({ stems: st, midi, filesError: errs.join('\n'), bpm, bpmSource, analysis: null, regions: null, reading: '' });
+    this.setState({ stems: st, midi, filesError: errs.join('\n'), bpm, bpmSource, analysis: null, regions: null, reading: '', edits: {} });
   }
   validateFiles() {
     const { stems, midi } = this.state;
@@ -160,8 +244,7 @@ export default class App extends React.Component {
     this._thQ = true;
     requestAnimationFrame(() => {
       this._thQ = false;
-      this.setState({ threshold: this._thT });
-      this.reapplyThreshold(this._thT);
+      this.setState({ threshold: this._thT }, () => this.rebuildSlices());
     });
   }
 
@@ -195,86 +278,164 @@ export default class App extends React.Component {
       const s = stems[si];
       this.setState({ progress: 'Analyzing ' + s.name + ' (' + (si + 1) + '/' + stems.length + ')…' });
       await new Promise(r => setTimeout(r, 20));
-      const peaks = core.measurePeaks(s.chL, s.chR, bounds);
-      stemData.push({ id: s.id, peaks });
+      stemData.push({ id: s.id, peaks: core.measurePeaks(s.chL, s.chR, bounds) });
     }
-    this.buildSlices(stemData, regs, bounds, thLin, warnings);
+    this.fillSlices(stemData, regs, bounds, thLin, warnings);
     if (regs.some(r => !r.scale.ok)) warnings.push('Regions over 32 bars cannot be represented as a single pattern — split them in the arrangement MIDI.');
     if ((this.state.regionsMeta.snapped || 0) > 0) warnings.push(this.state.regionsMeta.snapped + ' MIDI note(s) were not exactly on a bar line — snapped to the nearest measure.');
     if (regs.length > 32) warnings.push(regs.length + ' regions — patterns roll on past Bank 3 (' + core.bankPattern(regs.length).bp + ' last).');
     const fitPpm = Math.max(5, Math.min(30, Math.floor((window.innerWidth - 200) / total)));
+    this.bandCache.clear(); this.pathCache.clear();
     this.setState({ analyzing: false, analysis: { bounds, total, regs, stemData, warnings, v: Date.now() }, step: 'results', ppm: fitPpm, sel: null, startMeasure: 1, loopRegionIdx: null });
     this.blobCache = {}; this.buffers = {};
   };
-  buildSlices(stemData, regs, bounds, thLin, warnings) {
-    const { stems } = this.state;
-    stemData.forEach((sd) => {
-      const s = stems.find(x => x.id === sd.id), slices = [];
-      for (const r of regs) {
-        const t = core.trimRegion(sd.peaks, r.start, r.end, thLin);
-        if (!t) continue;
-        const start = bounds[t.a], end = bounds[t.b + 1];
-        slices.push({ region: r, aM: t.a, bM: t.b, start, end, frames: end - start, trig: core.trigStep(t.a - r.start, r.scale.steps) });
-      }
-      let out = 0;
-      slices.forEach((sl, i) => {
-        sl.num = i + 1; sl.outStart = out; out += sl.frames; sl.outEnd = out;
-        const buckets = Math.min(560, Math.max(32, (sl.bM - sl.aM + 1) * 16));
-        sl.vb = '0 0 ' + buckets + ' 32';
-        sl.bands = core.waveBands(s.chL, s.chR, sl.start, sl.end, buckets);
-        sl._pc = {};
-      });
-      sd.slices = slices; sd.totalFrames = out;
-      if (!slices.length) warnings.push(s.name + ' is entirely silent at this threshold — no files will be exported for it.');
-      if (slices.length > 64) warnings.push(s.name + ': ' + slices.length + ' slices exceeds the Octatrack limit of 64 — the .ot file keeps the first 64.');
+  fillSlices(stemData, regs, bounds, thLin, warnings) {
+    const { stems, edits } = this.state;
+    stemData.forEach(sd => {
+      const s = stems.find(x => x.id === sd.id);
+      const r = core.buildStemSlices(sd.peaks, regs, bounds, thLin, edits[sd.id] || {});
+      sd.slices = r.slices; sd.ghosts = r.ghosts; sd.totalFrames = r.totalFrames;
+      if (!r.slices.length) warnings.push(s.name + ' has no slices at this threshold — no files will be exported for it.');
+      if (r.slices.length > 64) warnings.push(s.name + ': ' + r.slices.length + ' slices exceeds the Octatrack limit of 64 — the .ot file keeps the first 64.');
     });
   }
-  reapplyThreshold = (th) => {
+  rebuildSlices() {
     const a = this.state.analysis; if (!a) return;
-    const warnings = a.warnings.filter(w => !/silent at this threshold|exceeds the Octatrack limit/.test(w));
-    this.buildSlices(a.stemData, a.regs, a.bounds, core.dbToLin(th), warnings);
+    const warnings = a.warnings.filter(w => !/no slices at this threshold|exceeds the Octatrack limit/.test(w));
+    this.fillSlices(a.stemData, a.regs, a.bounds, core.dbToLin(this.state.threshold), warnings);
     this.blobCache = {};
-    this.setState({ analysis: { ...a, warnings, v: Date.now() }, sel: null });
+    this.setState({ analysis: { ...a, warnings, v: Date.now() } });
+  }
+
+  // ---------- slice edits ----------
+  setEdit(stemId, regionIdx, patch) {
+    const edits = { ...this.state.edits }, forStem = { ...(edits[stemId] || {}) };
+    const next = { ...(forStem[regionIdx] || {}), ...patch };
+    if (next.del == null && next.a == null) delete forStem[regionIdx]; else forStem[regionIdx] = next;
+    edits[stemId] = forStem;
+    this.setState({ edits }, () => this.rebuildSlices());
+  }
+  editCount() { return Object.values(this.state.edits).reduce((n, m) => n + Object.keys(m).length, 0); }
+  deleteSelected = () => { const s = this.state.sel; if (s) this.setEdit(s.stemId, s.regionIdx, { del: true, a: null, b: null }); };
+  resetEdits = () => this.setState({ edits: {} }, () => this.rebuildSlices());
+  startTrim = (stemId, regionIdx, side, e) => {
+    e.stopPropagation(); e.preventDefault();
+    const a = this.state.analysis, sd = a.stemData.find(x => x.id === stemId);
+    const sl = sd && sd.slices.find(x => x.region.idx === regionIdx); if (!sl) return;
+    const st = { x0: e.clientX, a0: sl.aM, b0: sl.bM, r: sl.region };
+    let lastA = sl.aM, lastB = sl.bM;
+    const move = (ev) => {
+      const d = Math.round((ev.clientX - st.x0) / this.state.ppm);
+      let a2 = st.a0, b2 = st.b0;
+      if (side === 'l') a2 = Math.max(st.r.start, Math.min(st.b0, st.a0 + d));
+      else b2 = Math.min(st.r.end - 1, Math.max(st.a0, st.b0 + d));
+      if (a2 !== lastA || b2 !== lastB) { lastA = a2; lastB = b2; this.setEdit(stemId, regionIdx, { a: a2, b: b2, del: null }); }
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
 
   // ---------- playback ----------
   ctx() {
     if (!this._ctx) {
-      this._ctx = new AudioContext({ sampleRate: 44100 });
+      this._ctx = new AudioContext({ sampleRate: SR });
       this.master = this._ctx.createGain(); this.master.gain.value = this.state.vol; this.master.connect(this._ctx.destination);
-      this.masterAn = this._ctx.createAnalyser(); this.masterAn.fftSize = 1024; this.master.connect(this.masterAn);
+      this.masterAn = this._ctx.createAnalyser(); this.masterAn.fftSize = 2048; this.master.connect(this.masterAn);
     }
     return this._ctx;
   }
   bufferFor(stem) {
     if (!this.buffers[stem.id]) {
-      const b = this.ctx().createBuffer(2, stem.frames, 44100);
+      const b = this.ctx().createBuffer(2, stem.frames, SR);
       b.copyToChannel(stem.chL, 0); b.copyToChannel(stem.chR, 1);
       this.buffers[stem.id] = b;
     }
     return this.buffers[stem.id];
   }
   audible(stem) { const anySolo = this.state.stems.some(s => s.solo); return anySolo ? stem.solo : !stem.muted; }
+  ensureBus() {
+    const ctx = this.ctx();
+    if (!this.bus) {
+      const bus = ctx.createGain(); bus.gain.value = 1; bus.connect(this.master); this.bus = bus;
+      this.gains = {};
+    }
+    for (const stem of this.state.stems) {
+      if (!this.gains[stem.id]) { const g = ctx.createGain(); g.gain.value = this.audible(stem) ? 1 : 0; g.connect(this.bus); g.connect(this.analyserFor(stem.id)); this.gains[stem.id] = g; }
+    }
+  }
+  // one-shot linear playback of every slice from `fromSample`, starting at `when`
+  scheduleLinear(fromSample, when) {
+    const a = this.state.analysis, ctx = this.ctx();
+    for (const sd of a.stemData) {
+      const stem = this.state.stems.find(s => s.id === sd.id), g = stem && this.gains[stem.id]; if (!g) continue;
+      const buf = this.bufferFor(stem);
+      for (const sl of sd.slices) {
+        if (sl.end <= fromSample) continue;
+        const skip = Math.max(0, fromSample - sl.start);
+        const src = ctx.createBufferSource(); src.buffer = buf; src.connect(g);
+        src.onended = () => { const i = this.sources.indexOf(src); if (i >= 0) this.sources.splice(i, 1); };
+        src.start(when + Math.max(0, sl.start - fromSample) / SR, (sl.start + skip) / SR, (sl.frames - skip) / SR);
+        this.sources.push(src);
+      }
+    }
+  }
   scheduleLoopIter(k) {
-    const a = this.state.analysis, ctx = this.ctx(), { ls, le, len } = this.loopInfo, t0 = this.loopT0;
+    const a = this.state.analysis, ctx = this.ctx(), { ls, le, len } = this.loopInfo, t0 = this.loopT0, now = ctx.currentTime;
     for (const sd of a.stemData) {
       const stem = this.state.stems.find(s => s.id === sd.id), g = stem && this.gains[stem.id]; if (!g) continue;
       const buf = this.bufferFor(stem);
       for (const sl of sd.slices) {
         const s = Math.max(sl.start, ls), e = Math.min(sl.end, le); if (e <= s) continue;
+        let when = t0 + (k * len + (s - ls)) / SR, off = s / SR, dur = (e - s) / SR;
+        if (when + dur <= now) continue;              // entirely in the past (mid-loop start)
+        if (when < now) { const skip = now - when; off += skip; dur -= skip; when = now; }
         const src = ctx.createBufferSource(); src.buffer = buf; src.connect(g);
         src.onended = () => { const i = this.sources.indexOf(src); if (i >= 0) this.sources.splice(i, 1); };
-        src.start(t0 + (k * len + (s - ls)) / 44100, s / 44100, (e - s) / 44100);
+        src.start(when, off, dur);
         this.sources.push(src);
+      }
+    }
+  }
+  posSamples() {
+    const a = this.state.analysis; if (!a) return 0;
+    if (!this.state.playing || !this._ctx) return a.bounds[Math.max(0, this.state.startMeasure - 1)];
+    if (this.loopInfo) {
+      const { ls, len } = this.loopInfo, tl = this._ctx.currentTime - this.loopT0;
+      return tl >= 0 ? ls + ((tl * SR) % len) : this.start0 + Math.max(0, this._ctx.currentTime - this.t0) * SR;
+    }
+    return this.start0 + Math.max(0, this._ctx.currentTime - this.t0) * SR;
+  }
+  startTicker() {
+    cancelAnimationFrame(this.raf);
+    const a = this.state.analysis, spm = core.spmFor(parseFloat(this.state.bpm)), endS = a.bounds[a.total];
+    const tick = () => {
+      if (!this.state.playing) return;
+      const pos = this.posSamples();
+      if (!this.loopInfo && pos >= endS) { this.stop(); return; }
+      this.paintPlayhead(pos / spm);
+      this.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
+  }
+  paintPlayhead(mf) {
+    const a = this.state.analysis; if (!a) return;
+    const px = mf * this.state.ppm;
+    if (this.ph) this.ph.style.transform = 'translateX(' + px + 'px)';
+    if (this.ovPh) this.ovPh.style.left = (mf / a.total * 100) + '%';
+    if (this.pos) this.pos.textContent = String(Math.floor(mf) + 1).padStart(3, '0') + '.' + (Math.floor((mf % 1) * 4) + 1);
+    if (this.state.follow && this.sc && this.state.playing) {
+      const vw = this.sc.clientWidth, left = this.sc.scrollLeft;
+      if (px < left + vw * 0.06 || px > left + vw * 0.84) {
+        this.autoScroll = true;
+        this.sc.scrollLeft = Math.max(0, px - vw * 0.25);
       }
     }
   }
   play = () => {
     const a = this.state.analysis; if (!a) return;
-    this.stop(); const ctx = this.ctx(); ctx.resume();
-    const t0 = ctx.currentTime + 0.12; this.t0 = t0; this.gains = {};
-    const bus = ctx.createGain(); bus.gain.setValueAtTime(0, ctx.currentTime); bus.gain.linearRampToValueAtTime(1, t0 + 0.015); bus.connect(this.master); this.bus = bus;
-    for (const stem of this.state.stems) { const g = ctx.createGain(); g.gain.value = this.audible(stem) ? 1 : 0; g.connect(bus); g.connect(this.analyserFor(stem.id)); this.gains[stem.id] = g; }
+    this.stopSources(); const ctx = this.ctx(); ctx.resume();
+    this.ensureBus();
+    const t0 = ctx.currentTime + 0.12; this.t0 = t0;
     const lr = this.state.loopRegionIdx != null ? a.regs.find(r => r.idx === this.state.loopRegionIdx) : null;
     if (lr) {
       const ls = a.bounds[lr.start], le = a.bounds[lr.end];
@@ -282,65 +443,166 @@ export default class App extends React.Component {
     } else {
       this.loopInfo = null;
       const start0 = a.bounds[this.state.startMeasure - 1]; this.start0 = start0;
-      for (const sd of a.stemData) {
-        const stem = this.state.stems.find(s => s.id === sd.id), g = stem && this.gains[stem.id]; if (!g) continue;
-        const buf = this.bufferFor(stem);
-        for (const sl of sd.slices) {
-          if (sl.end <= start0) continue;
-          const skip = Math.max(0, start0 - sl.start);
-          const src = ctx.createBufferSource(); src.buffer = buf; src.connect(g);
-          src.start(t0 + Math.max(0, sl.start - start0) / 44100, (sl.start + skip) / 44100, (sl.frames - skip) / 44100);
-          this.sources.push(src);
-        }
-      }
+      this.scheduleLinear(start0, t0);
     }
-    this.setState({ playing: true });
-    const spm = core.spmFor(parseFloat(this.state.bpm)), endS = a.bounds[a.total];
-    const tick = () => {
-      if (!this.state.playing) return;
-      const el = Math.max(0, this.ctx().currentTime - this.t0);
-      let pos;
-      if (this.loopInfo) {
-        const { ls, len } = this.loopInfo;
-        const tl = this.ctx().currentTime - this.loopT0;
-        while (this.nextIter * len / 44100 < tl + 1.2) { this.scheduleLoopIter(this.nextIter); this.nextIter++; }
-        pos = tl >= 0 ? ls + (tl * 44100) % len : this.start0 + el * 44100;
-      } else {
-        pos = this.start0 + el * 44100;
-        if (pos >= endS) { this.stop(); return; }
-      }
-      const mf = pos / spm, px = mf * this.state.ppm;
-      if (this.ph) this.ph.style.transform = 'translateX(' + px + 'px)';
-      if (this.sc) { const vw = this.sc.clientWidth; if (px < this.sc.scrollLeft + 30 || px > this.sc.scrollLeft + vw - 90) this.sc.scrollLeft = Math.max(0, px - vw * 0.15); }
-      if (this.pos) this.pos.textContent = String(Math.floor(mf) + 1).padStart(3, '0') + '.' + (Math.floor((mf % 1) * 4) + 1);
-      this.raf = requestAnimationFrame(tick);
-    };
-    this.raf = requestAnimationFrame(tick);
+    this.setState({ playing: true }, () => { this.pumpLoop(); this.startTicker(); });
   };
+  pumpLoop() {
+    if (!this.loopInfo || !this._ctx) return;
+    const { len } = this.loopInfo, tl = this._ctx.currentTime - this.loopT0;
+    while (this.nextIter * len / SR < tl + 1.2) { this.scheduleLoopIter(this.nextIter); this.nextIter++; }
+    clearTimeout(this._pump);
+    this._pump = setTimeout(() => this.pumpLoop(), 200);
+  }
+  stopSources(fade) {
+    if (this._ctx && this.sources.length) {
+      const srcs = this.sources; this.sources = [];
+      if (fade) { const t = this._ctx.currentTime; srcs.forEach(s => { try { s.stop(t + 0.02); } catch (e) {} }); }
+      else srcs.forEach(s => { try { s.stop(); } catch (e) {} });
+    }
+    clearTimeout(this._pump);
+  }
   stop = () => {
-    if (this._ctx && this.bus) {
-      const b = this.bus, srcs = this.sources, t = this._ctx.currentTime;
-      this.bus = null; this.sources = [];
-      try { b.gain.cancelScheduledValues(t); b.gain.setValueAtTime(b.gain.value, t); b.gain.linearRampToValueAtTime(0, t + 0.02); } catch (e) {}
-      setTimeout(() => { srcs.forEach(s => { try { s.stop(); } catch (e) {} }); try { b.disconnect(); } catch (e) {} }, 90);
-    } else { this.sources.forEach(s => { try { s.stop(); } catch (e) {} }); this.sources = []; }
+    this.stopSources(true);
     this.loopInfo = null;
     cancelAnimationFrame(this.raf);
     if (this.state.playing) this.setState({ playing: false });
-    if (this.ph) this.ph.style.transform = 'translateX(' + ((this.state.startMeasure - 1) * this.state.ppm) + 'px)';
-    if (this.pos) this.pos.textContent = String(this.state.startMeasure).padStart(3, '0') + '.1';
+    const spm = core.spmFor(parseFloat(this.state.bpm) || 120);
+    const a = this.state.analysis;
+    if (a) this.paintPlayhead(a.bounds[Math.max(0, this.state.startMeasure - 1)] / spm);
+  };
+  // Switch from looping to linear playback without a gap, continuing where we are.
+  releaseLoop = () => {
+    if (!this.state.playing || !this.loopInfo) { this.setState({ loopRegionIdx: null }); return; }
+    const a = this.state.analysis, ctx = this.ctx(), tSwitch = ctx.currentTime + 0.06;
+    const { ls, len } = this.loopInfo;
+    const pos = ls + (((tSwitch - this.loopT0) * SR) % len);
+    for (const s of this.sources) { try { s.stop(tSwitch); } catch (e) {} }
+    this.sources = []; clearTimeout(this._pump);
+    this.loopInfo = null; this.start0 = pos; this.t0 = tSwitch;
+    this.scheduleLinear(pos, tSwitch);
+    const spm = core.spmFor(parseFloat(this.state.bpm));
+    this.setState({ loopRegionIdx: null, startMeasure: Math.min(a.total, Math.floor(pos / spm) + 1) });
+  };
+  seekTo = (sample, keepPlaying) => {
+    const a = this.state.analysis; if (!a) return;
+    const spm = core.spmFor(parseFloat(this.state.bpm));
+    const bar = Math.max(0, Math.min(a.total - 1, Math.floor(sample / spm)));
+    if (keepPlaying && this.state.playing) {
+      const ctx = this.ctx(), tSwitch = ctx.currentTime + 0.06;
+      for (const s of this.sources) { try { s.stop(tSwitch); } catch (e) {} }
+      this.sources = []; clearTimeout(this._pump);
+      if (this.loopInfo && sample >= this.loopInfo.ls && sample < this.loopInfo.le) {
+        this.loopT0 = tSwitch - (sample - this.loopInfo.ls) / SR; this.nextIter = 0;
+        this.setState({ startMeasure: bar + 1 }, () => this.pumpLoop());
+      } else {
+        this.loopInfo = null; this.start0 = sample; this.t0 = tSwitch;
+        this.scheduleLinear(sample, tSwitch);
+        this.setState({ startMeasure: bar + 1, loopRegionIdx: null });
+      }
+    } else {
+      this.setState({ startMeasure: bar + 1 }, () => this.paintPlayhead(sample / spm));
+    }
   };
   audition = (sel) => {
     const a = this.state.analysis, sd = a.stemData.find(x => x.id === sel.stemId);
-    const sl = sd && sd.slices.find(x => x.num === sel.num); if (!sl) return;
+    const sl = sd && sd.slices.find(x => x.region.idx === sel.regionIdx); if (!sl) return;
     this.stop(); const ctx = this.ctx(); ctx.resume();
+    this.ensureBus();
     const stem = this.state.stems.find(s => s.id === sel.stemId);
-    const bus = ctx.createGain(); bus.gain.setValueAtTime(0, ctx.currentTime); bus.gain.linearRampToValueAtTime(1, ctx.currentTime + 0.06); bus.connect(this.master); this.bus = bus;
-    const src = ctx.createBufferSource(); src.buffer = this.bufferFor(stem); src.connect(bus); src.connect(this.analyserFor(stem.id));
-    src.start(ctx.currentTime + 0.05, sl.start / 44100, sl.frames / 44100);
+    const src = ctx.createBufferSource(); src.buffer = this.bufferFor(stem); src.connect(this.gains[stem.id]);
+    src.start(ctx.currentTime + 0.05, sl.start / SR, sl.frames / SR);
     this.sources.push(src);
   };
   updateGains() { if (!this._ctx) return; const t = this._ctx.currentTime; for (const s of this.state.stems) if (this.gains[s.id]) this.gains[s.id].gain.setTargetAtTime(this.audible(s) ? 1 : 0, t, 0.015); }
+
+  // ---------- timeline interaction ----------
+  barFromClientX(clientX, el) {
+    const a = this.state.analysis, rect = el.getBoundingClientRect();
+    return Math.max(0, Math.min(a.total - 0.001, (clientX - rect.left) / this.state.ppm));
+  }
+  scrub(getBar, e) {
+    const a = this.state.analysis; if (!a) return;
+    e.preventDefault();
+    const spm = core.spmFor(parseFloat(this.state.bpm));
+    const wasPlaying = this.state.playing;
+    if (wasPlaying) { this.stopSources(true); cancelAnimationFrame(this.raf); this.loopInfo = null; }
+    let bar = getBar(e);
+    this.paintPlayhead(bar);
+    const move = (ev) => { bar = getBar(ev); this.paintPlayhead(bar); };
+    const up = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+      const m = Math.max(0, Math.min(a.total - 1, Math.floor(bar)));
+      if (wasPlaying) {
+        this.setState({ playing: false, startMeasure: m + 1, loopRegionIdx: null }, () => this.play());
+      } else {
+        this.setState({ startMeasure: m + 1, loopRegionIdx: null }, () => this.paintPlayhead(a.bounds[m] / spm));
+      }
+    };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  }
+  onScroll = () => {
+    if (this._scrollQ) return;
+    this._scrollQ = true;
+    requestAnimationFrame(() => {
+      this._scrollQ = false;
+      if (!this.sc) return;
+      const sx = this.sc.scrollLeft, vw = this.sc.clientWidth;
+      this.syncOverview();
+      if (Math.abs(sx - this.state.scrollX) > 24 || vw !== this.state.viewW) this.setState({ scrollX: sx, viewW: vw });
+    });
+  };
+  syncOverview() {
+    const a = this.state.analysis;
+    if (!a || !this.sc || !this.ovVp) return;
+    const w = a.total * this.state.ppm || 1;
+    this.ovVp.style.left = Math.max(0, Math.min(100, this.sc.scrollLeft / w * 100)) + '%';
+    this.ovVp.style.width = Math.max(1.5, Math.min(100, this.sc.clientWidth / w * 100)) + '%';
+  }
+  zoomAt(clientX, factor) {
+    const a = this.state.analysis; if (!a || !this.sc) return;
+    const ppm = this.state.ppm, next = Math.max(2, Math.min(160, ppm * factor));
+    if (next === ppm) return;
+    const rect = this.sc.getBoundingClientRect();
+    const cx = Math.max(0, Math.min(rect.width, (clientX ?? rect.left + rect.width / 2) - rect.left));
+    const barAt = (this.sc.scrollLeft + cx) / ppm;
+    this.setState({ ppm: next }, () => {
+      if (!this.sc) return;
+      this.autoScroll = true;
+      this.sc.scrollLeft = Math.max(0, barAt * next - cx);
+      this.syncOverview();
+      this.setState({ scrollX: this.sc.scrollLeft, viewW: this.sc.clientWidth });
+    });
+  }
+  // Trackpad pinch arrives as wheel+ctrlKey; horizontal wheel means the user is
+  // driving the view, so stop following the playhead.
+  attachScroll = (el) => {
+    if (this.sc === el) return;
+    if (this.sc && this._wheelH) this.sc.removeEventListener('wheel', this._wheelH);
+    this.sc = el;
+    if (!el) return;
+    this._wheelH = (e) => {
+      if (e.ctrlKey || e.metaKey) { e.preventDefault(); this.zoomAt(e.clientX, Math.exp(-e.deltaY * 0.01)); return; }
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && this.state.follow && this.state.playing) this.setState({ follow: false });
+    };
+    el.addEventListener('wheel', this._wheelH, { passive: false });
+    this.syncOverview();
+    if (!this.state.viewW) this.setState({ viewW: el.clientWidth });
+  };
+
+  // ---------- waveform cache ----------
+  bandsFor(stem, sl, buckets) {
+    const k = stem.id + ':' + sl.aM + ':' + sl.bM + ':' + buckets;
+    let b = this.bandCache.get(k);
+    if (!b) { if (this.bandCache.size > 400) this.bandCache.clear(); b = core.waveBands(stem.chL, stem.chR, sl.start, sl.end, buckets); this.bandCache.set(k, b); }
+    return b;
+  }
+  pathsFor(stem, sl, buckets, style) {
+    const k = stem.id + ':' + sl.aM + ':' + sl.bM + ':' + buckets + ':' + style;
+    let p = this.pathCache.get(k);
+    if (!p) { if (this.pathCache.size > 400) this.pathCache.clear(); p = core.wavePaths(this.bandsFor(stem, sl, buckets), style, 32); this.pathCache.set(k, p); }
+    return p;
+  }
 
   // ---------- export ----------
   download(name, blob) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
@@ -381,7 +643,7 @@ export default class App extends React.Component {
       let sawMarkers = false;
       S.stems.forEach((stem, i) => {
         const sd = a.stemData.find(x => x.id === stem.id);
-        if (!sd || !sd.slices.length) { rep.push({ warn: 1, text: stem.name + ' is silent — Static slot ' + (i + 1) + ' left empty' }); return; }
+        if (!sd || !sd.slices.length) { rep.push({ warn: 1, text: stem.name + ' has no slices — Static slot ' + (i + 1) + ' left empty' }); return; }
         const base = this.fileBase(stem, i);
         entries.push({ name: folder + '/' + base + '.wav', data: this.stemWavBytes(sd, stem) });
         entries.push({ name: folder + '/' + base + '.ot', data: core.writeOt(parseFloat(S.bpm), sd.totalFrames, sd.slices.map(s => ({ start: s.outStart, end: s.outEnd }))) });
@@ -496,7 +758,7 @@ export default class App extends React.Component {
     this.download(((this.state.abbrev || 'OSSC').trim()) + ' patterns.csv', new Blob([core.toCsv(rows)], { type: 'text/csv' }));
   };
 
-  // ---------- project (phase 2) ----------
+  // ---------- project ----------
   onProjectInput = async (e) => {
     const files = [...e.target.files];
     if (!files.length) return;
@@ -511,6 +773,19 @@ export default class App extends React.Component {
       else if (!/^1\.40[ABC]$/.test(os)) warn = 'Project OS ' + os + ' — slot writing verified for OS 1.40 A/B/C only; verify on device.';
     } else warn = 'No project.work found — is this an Octatrack project folder?';
     this.setState({ project: { folder, files: files.length, banks, os, warn, fileList: files }, projReport: null });
+  };
+
+  // ---------- resizing ----------
+  startResize = (axis, e) => {
+    e.preventDefault(); e.stopPropagation();
+    const x0 = e.clientX, y0 = e.clientY, w0 = this.state.railW, h0 = this.state.laneH;
+    const move = (ev) => {
+      if (axis === 'rail') this.setState({ railW: Math.max(110, Math.min(460, w0 + ev.clientX - x0)) });
+      else this.setState({ laneH: Math.max(28, Math.min(220, h0 + ev.clientY - y0)) });
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); document.body.style.cursor = ''; };
+    document.body.style.cursor = axis === 'rail' ? 'col-resize' : 'ns-resize';
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
 
   // ---------- view model ----------
@@ -542,7 +817,7 @@ export default class App extends React.Component {
     vals.stemCountLabel = S.stems.length ? '· ' + S.stems.length + ' loaded' : '';
     vals.stemsVm = S.stems.map((s, i) => ({
       num: i + 1, name: s.name, fileName: s.fileName,
-      props: (s.frames / 44100 / 60 | 0) + ':' + String((s.frames / 44100 % 60) | 0).padStart(2, '0') + ' · ' + s.bits + '-bit · ' + s.frames.toLocaleString() + ' smp',
+      props: (s.frames / SR / 60 | 0) + ':' + String((s.frames / SR % 60) | 0).padStart(2, '0') + ' · ' + s.bits + '-bit · ' + s.frames.toLocaleString() + ' smp',
       hasWarn: s.warnings.length > 0, warnText: s.warnings.join('; '),
       first: i === 0, last: i === S.stems.length - 1,
       onName: e => { const st = [...S.stems]; st[i] = { ...st[i], name: e.target.value.toUpperCase() }; set({ stems: st }); },
@@ -560,7 +835,7 @@ export default class App extends React.Component {
     vals.onBpmKey = e => { if (e.key === 'Enter') e.target.blur(); };
     vals.bpmSource = S.bpmSource; vals.hasBpmError = !!S.bpmError; vals.bpmError = S.bpmError;
     vals.spmLabel = spm ? spm.toFixed(2) : '—';
-    vals.songLenLabel = S.midi && spm ? (() => { const tm = Math.round(S.midi.ticks[S.midi.ticks.length - 1] / (S.midi.ppq * 4)); const sec = tm * spm / 44100; return tm + ' bars · ' + (sec / 60 | 0) + ':' + String(Math.round(sec % 60)).padStart(2, '0'); })() : '—';
+    vals.songLenLabel = S.midi && spm ? (() => { const tm = Math.round(S.midi.ticks[S.midi.ticks.length - 1] / (S.midi.ppq * 4)); const sec = tm * spm / SR; return tm + ' bars · ' + (sec / 60 | 0) + ':' + String(Math.round(sec % 60)).padStart(2, '0'); })() : '—';
     vals.regionCountLabel = S.midi ? String(Math.max(0, S.midi.noteCount - 1)) : '—';
     vals.abbrev = S.abbrev; vals.onAbbrev = e => set({ abbrev: e.target.value });
     vals.onConfirmTempo = this.confirmTempo;
@@ -581,20 +856,25 @@ export default class App extends React.Component {
     // results
     const a = S.analysis;
     if (a) {
-      const ppm = S.ppm, selKey = S.sel ? S.sel.stemId + ':' + S.sel.num : '';
+      const ppm = S.ppm;
       vals.tlWidth = Math.ceil(a.total * ppm) + 2;
-      vals.laneH = this.props.compactLanes ? 38 : 50;
+      vals.laneH = S.laneH; vals.railW = S.railW;
       vals.playing = S.playing; vals.onPlay = this.play; vals.onStop = this.stop;
       vals.playCls = S.playing ? 'on' : '';
       vals.onToStart = () => { this.stop(); set({ startMeasure: 1 }); if (this.sc) this.sc.scrollLeft = 0; };
-      vals.onZoomFit = () => set({ ppm: Math.max(3, Math.min(30, Math.floor(((this.sc ? this.sc.clientWidth : window.innerWidth - 200) - 10) / a.total))) });
+      vals.onZoomFit = () => { const w = (this.sc ? this.sc.clientWidth : window.innerWidth - 200) - 10; set({ ppm: Math.max(2, Math.min(30, Math.floor(w / a.total))) }); };
       vals.onDeselect = () => S.sel && set({ sel: null });
       vals.regionLines = a.regs.map(r => ({ left: r.start * ppm }));
       vals.onPrint = this.printTable;
-      vals.posRef = el => this.pos = el; vals.playheadRef = el => this.ph = el; vals.scrollRef = el => this.sc = el;
+      vals.posRef = el => this.pos = el;
+      vals.playheadRef = el => this.ph = el;
+      vals.scrollRef = this.attachScroll;
+      vals.onScroll = this.onScroll;
       vals.posLabel = String(S.startMeasure).padStart(3, '0') + '.1';
       vals.playheadPx = (S.startMeasure - 1) * ppm;
       vals.startMeasure = S.startMeasure;
+      vals.follow = S.follow; vals.followCls = S.follow ? 'on' : '';
+      vals.onToggleFollow = () => set({ follow: !S.follow });
       vals.vol = S.vol; vals.onVol = e => { const v = parseFloat(e.target.value); set({ vol: v }); if (this.master && this._ctx) this.master.gain.setTargetAtTime(v, this._ctx.currentTime, 0.02); };
       vals.thresholdStr = S.thDraft != null ? S.thDraft : String(S.threshold);
       vals.thresholdVal = S.threshold;
@@ -605,22 +885,27 @@ export default class App extends React.Component {
       vals.onThDown = () => this.applyThreshold((this._thQ ? this._thT : S.threshold) - 3);
       vals.onThUp = () => this.applyThreshold((this._thQ ? this._thT : S.threshold) + 3);
       const sm = S.scopeMode || 'off';
-      vals.railCols = (sm !== 'off' ? '212px' : '150px') + ' 1fr';
       vals.scopesOn = sm !== 'off';
+      vals.scopeW = Math.max(40, Math.min(200, S.railW - 148)); // leave room for the track name
       vals.scopeCls = sm === 'scope' ? 'on' : ''; vals.fftCls = sm === 'fft' ? 'on' : '';
       vals.onToggleScopes = () => set({ scopeMode: sm === 'scope' ? 'off' : 'scope' });
       vals.onToggleFft = () => set({ scopeMode: sm === 'fft' ? 'off' : 'fft' });
       vals.masterMeterRef = el => this.masterMeterEl = el;
       vals.wvSpec = S.waveStyle === 'spectral'; vals.wvBand = S.waveStyle === 'band'; vals.wvBars = S.waveStyle === 'bars';
       vals.onWvSpec = () => set({ waveStyle: 'spectral' }); vals.onWvBand = () => set({ waveStyle: 'band' }); vals.onWvBars = () => set({ waveStyle: 'bars' });
-      vals.onZoomIn = () => set({ ppm: Math.min(90, Math.round(ppm * 1.4)) });
-      vals.onZoomOut = () => set({ ppm: Math.max(3, Math.round(ppm / 1.4)) });
+      vals.onZoomIn = () => this.zoomAt(null, 1.4);
+      vals.onZoomOut = () => this.zoomAt(null, 1 / 1.4);
+      vals.onRailResize = e => this.startResize('rail', e);
+      vals.onLaneResize = e => this.startResize('lane', e);
       vals.hasWarnings = a.warnings.length > 0; vals.warnCount = a.warnings.length;
       vals.onToggleWarn = () => set({ showWarn: !S.showWarn }); vals.showWarn = S.showWarn && a.warnings.length > 0;
       vals.warningsVm = a.warnings.map(w => ({ text: w }));
       vals.viewTl = S.view === 'tl'; vals.viewTable = S.view === 'table';
       vals.onViewTl = () => set({ view: 'tl' }); vals.onViewTable = () => set({ view: 'table' });
       vals.goExport = () => set({ step: 'export' });
+      vals.editCount = this.editCount();
+      vals.onResetEdits = this.resetEdits;
+      const selKey = S.sel ? S.sel.stemId + ':' + S.sel.regionIdx : '';
       const selRegionIdx = S.sel ? S.sel.regionIdx : -1;
       vals.regionBlocks = a.regs.map(r => {
         const looped = S.loopRegionIdx === r.idx;
@@ -632,66 +917,88 @@ export default class App extends React.Component {
           loopCls: looped ? 'on' : '',
           onLoop: (e) => {
             e.stopPropagation();
-            if (S.loopRegionIdx === r.idx) { this.stop(); this.setState({ loopRegionIdx: null }); return; }
+            if (S.loopRegionIdx === r.idx) { this.releaseLoop(); return; }
             const ls = a.bounds[r.start], le = a.bounds[r.end];
             if (this.state.playing && !this.loopInfo && this._ctx) {
-              const posS = this.start0 + Math.max(0, this._ctx.currentTime - this.t0) * 44100;
+              const posS = this.start0 + Math.max(0, this._ctx.currentTime - this.t0) * SR;
               if (posS >= ls && posS < le) {
                 // playhead is inside this section: keep playing, wrap at its end
                 this.loopInfo = { ls, le, len: le - ls };
-                this.loopT0 = this.t0 + (le - this.start0) / 44100;
+                this.loopT0 = this.t0 + (le - this.start0) / SR;
                 this.nextIter = 0;
                 for (const s of this.sources) { try { s.stop(this.loopT0); } catch (err) {} }
-                this.setState({ loopRegionIdx: r.idx });
+                this.setState({ loopRegionIdx: r.idx }, () => this.pumpLoop());
                 return;
               }
             }
             this.stop();
-            this.setState({ loopRegionIdx: r.idx, startMeasure: r.start + 1 });
-            setTimeout(() => this.play(), 30);
+            this.setState({ loopRegionIdx: r.idx, startMeasure: r.start + 1 }, () => setTimeout(() => this.play(), 20));
           },
         };
       });
       const loopReg = S.loopRegionIdx != null ? a.regs.find(r => r.idx === S.loopRegionIdx) : null;
       vals.hasLoop = !!loopReg;
       if (loopReg) vals.loopLabel = String(loopReg.idx).padStart(2, '0') + (loopReg.name ? ' ' + loopReg.name.toUpperCase() : '') + ' (' + loopReg.bp + ')';
-      vals.onClearLoop = () => { this.stop(); set({ loopRegionIdx: null }); };
+      vals.onClearLoop = this.releaseLoop;
       const tickStep = ppm >= 22 ? 1 : ppm >= 11 ? 2 : ppm >= 6 ? 4 : 8, ticks = [];
       for (let m = 0; m < a.total; m += tickStep) ticks.push({ n: m + 1, left: m * ppm });
       vals.barTicks = ticks;
       vals.rulerGrid = 'repeating-linear-gradient(to right, color-mix(in srgb,var(--color-neutral-800) 55%,transparent) 0 1px, transparent 1px ' + ppm + 'px)';
       vals.laneGrid = vals.rulerGrid;
-      vals.onRulerClick = e => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const m = Math.max(0, Math.min(a.total - 1, Math.floor((e.clientX - rect.left) / ppm)));
-        this.stop(); set({ startMeasure: m + 1, loopRegionIdx: null });
+      vals.onRulerDown = e => this.scrub(ev => this.barFromClientX(ev.clientX, e.currentTarget), e);
+      vals.onPlayheadDown = e => { const el = this.sc.firstChild; this.scrub(ev => this.barFromClientX(ev.clientX, el), e); };
+      // overview strip
+      vals.ovRegions = a.regs.map(r => ({
+        k: r.idx, left: r.start / a.total * 100, width: r.len / a.total * 100,
+        label: String(r.idx).padStart(2, '0') + (r.name ? ' ' + r.name.toUpperCase() : ''),
+        bg: S.loopRegionIdx === r.idx ? 'color-mix(in srgb,var(--color-accent-900) 80%,transparent)' : r.idx % 2 ? 'color-mix(in srgb,var(--color-surface) 60%,transparent)' : 'transparent',
+      }));
+      vals.ovRef = el => { this.ov = el; };
+      vals.ovVpRef = el => { this.ovVp = el; this.syncOverview(); };
+      vals.ovPhRef = el => { this.ovPh = el; };
+      vals.onOvDown = e => {
+        const bar = ev => { const rect = this.ov.getBoundingClientRect(); return Math.max(0, Math.min(a.total - 0.001, (ev.clientX - rect.left) / rect.width * a.total)); };
+        // centre the viewport on the grabbed spot as well as seeking there
+        this.scrub(bar, e);
+        if (this.sc) { const px = bar(e) * ppm; this.autoScroll = true; this.sc.scrollLeft = Math.max(0, px - this.sc.clientWidth / 2); this.syncOverview(); }
       };
+      // lanes
+      const visA = (S.scrollX / ppm) - 2, visB = ((S.scrollX + (S.viewW || 1200)) / ppm) + 2;
       vals.lanes = S.stems.map(stem => {
         const sd = a.stemData.find(x => x.id === stem.id);
         const anySolo = S.stems.some(x => x.solo);
         return {
-          name: stem.name, mCls: stem.muted ? 'on' : '', sCls: stem.solo ? 'on' : '',
+          id: stem.id, name: stem.name, mCls: stem.muted ? 'on' : '', sCls: stem.solo ? 'on' : '',
           meterRef: el => { if (el) this.meterEls[stem.id] = el; },
           scopeRef: el => { if (el) this.scopeEls[stem.id] = el; },
           op: (anySolo ? stem.solo : !stem.muted) ? 1 : 0.35,
           onMute: () => { const st = S.stems.map(x => x.id === stem.id ? Object.assign(x, { muted: !x.muted }) : x); set({ stems: [...st] }); this.updateGains(); },
           onSolo: () => { const st = S.stems.map(x => x.id === stem.id ? Object.assign(x, { solo: !x.solo }) : x); set({ stems: [...st] }); this.updateGains(); },
+          ghosts: (sd ? sd.ghosts : []).map(g => ({
+            k: g.region.idx, left: g.region.start * ppm, width: Math.max(4, g.region.len * ppm - 2),
+            tip: (g.deleted ? 'Deleted' : 'Below threshold') + ' — click to add a slice for ' + (g.region.name || 'region ' + g.region.idx),
+            onClick: (e) => { e.stopPropagation(); this.setEdit(stem.id, g.region.idx, { del: null, a: g.region.start, b: g.region.end - 1 }); set({ sel: { stemId: stem.id, regionIdx: g.region.idx } }); },
+          })),
           slices: (sd ? sd.slices : []).map(sl => {
-            const key = stem.id + ':' + sl.num, isSel = key === selKey;
-            const wst = S.waveStyle;
-            if (!sl._pc[wst]) sl._pc[wst] = core.wavePaths(sl.bands, wst, 32);
-            const P = sl._pc[wst];
-            const F = wst === 'band' ? ['var(--color-accent-500)', 'none', 'none', 0.92]
-              : wst === 'bars' ? ['var(--color-accent-500)', 'none', 'var(--color-neutral-100)', 1]
+            const isSel = selKey === stem.id + ':' + sl.region.idx;
+            const bars = sl.bM - sl.aM + 1, px = bars * ppm;
+            const visible = sl.bM + 1 >= visA && sl.aM <= visB;
+            const P = visible ? this.pathsFor(stem, sl, core.bucketTier(px), S.waveStyle) : null;
+            const F = S.waveStyle === 'band' ? ['var(--color-accent-500)', 'none', 'none', 0.92]
+              : S.waveStyle === 'bars' ? ['var(--color-accent-500)', 'none', 'var(--color-neutral-100)', 1]
               : ['var(--color-accent-400)', 'var(--color-accent-800)', 'var(--color-neutral-100)', 1];
             return {
-              num: sl.num, left: sl.aM * ppm, width: Math.max(3, (sl.bM - sl.aM + 1) * ppm - 2),
-              vb: sl.vb, p1: P.p1, p2: P.p2, p3: P.p3, f1: F[0], f2: F[1], f3: F[2], o1: F[3],
+              key: sl.region.idx, num: sl.num, left: sl.aM * ppm, width: Math.max(3, px - 2), edited: sl.edited,
+              vb: '0 0 ' + core.bucketTier(px) + ' 32', hasWave: !!P,
+              p1: P ? P.p1 : '', p2: P ? P.p2 : '', p3: P ? P.p3 : '', f1: F[0], f2: F[1], f3: F[2], o1: F[3],
               border: isSel ? 'var(--color-accent-400)' : 'var(--color-accent-700)',
               glow: isSel ? '0 0 0 1px var(--color-accent-400), 0 0 10px color-mix(in srgb,var(--color-accent) 35%,transparent)' : 'none',
-              tip: stem.name + ' slice ' + sl.num,
-              onClick: (e) => { e.stopPropagation(); set({ sel: { stemId: stem.id, num: sl.num, regionIdx: sl.region.idx } }); },
-              onDbl: (e) => { e.stopPropagation(); this.audition({ stemId: stem.id, num: sl.num }); },
+              tip: stem.name + ' slice ' + sl.num + ' · bars ' + (sl.aM + 1) + '–' + (sl.bM + 1) + (sl.edited ? ' (trimmed)' : '') + ' — drag the edges to trim, double-click to audition',
+              selected: isSel,
+              onClick: (e) => { e.stopPropagation(); set({ sel: { stemId: stem.id, regionIdx: sl.region.idx } }); },
+              onDbl: (e) => { e.stopPropagation(); this.audition({ stemId: stem.id, regionIdx: sl.region.idx }); },
+              onTrimL: (e) => this.startTrim(stem.id, sl.region.idx, 'l', e),
+              onTrimR: (e) => this.startTrim(stem.id, sl.region.idx, 'r', e),
             };
           }),
         };
@@ -700,15 +1007,23 @@ export default class App extends React.Component {
       vals.hasSel = false; vals.noSel = true;
       if (S.sel) {
         const sd = a.stemData.find(x => x.id === S.sel.stemId), stem = S.stems.find(x => x.id === S.sel.stemId);
-        const sl = sd && sd.slices.find(x => x.num === S.sel.num);
+        const sl = sd && sd.slices.find(x => x.region.idx === S.sel.regionIdx);
         if (sl && stem) {
           vals.hasSel = true; vals.noSel = false;
           vals.selTitle = stem.name + ' · Slice ' + sl.num;
           vals.selRegion = String(sl.region.idx).padStart(2, '0') + (sl.region.name ? ' ' + sl.region.name.toUpperCase() : '') + ' (' + sl.region.bp + ')';
           vals.selFromBar = sl.aM + 1;
+          vals.selPatternBar = sl.aM - sl.region.start + 1;
           vals.selTrig = sl.trig;
+          vals.selEdited = sl.edited;
           vals.selSamples = (sl.bM - sl.aM + 1) + ' bars · smp ' + sl.start.toLocaleString() + '–' + sl.end.toLocaleString();
           vals.onAudition = () => this.audition(S.sel);
+          vals.onDeleteSel = this.deleteSelected;
+          vals.onResetSel = () => this.setEdit(S.sel.stemId, S.sel.regionIdx, { del: null, a: null, b: null });
+          vals.onNudge = (side, d) => {
+            const patch = side === 'l' ? { a: Math.max(sl.region.start, Math.min(sl.bM, sl.aM + d)), b: sl.bM } : { a: sl.aM, b: Math.min(sl.region.end - 1, Math.max(sl.aM, sl.bM + d)) };
+            this.setEdit(S.sel.stemId, S.sel.regionIdx, { ...patch, del: null });
+          };
         }
       }
       // table view
@@ -732,7 +1047,7 @@ export default class App extends React.Component {
       vals.onCsv = this.exportCsv;
       // export
       vals.namingPreview = '1 ' + (S.stems[0] ? S.stems[0].name : 'DRUMS') + ' ' + ((S.abbrev || 'Song').trim()) + '.wav / .ot';
-      const notices = a.warnings.filter(w => /silent|64/.test(w)).map(t => ({ text: t }));
+      const notices = a.warnings.filter(w => /no slices|64/.test(w)).map(t => ({ text: t }));
       vals.exportNotices = notices; vals.hasExportNotices = notices.length > 0;
       vals.fileCards = S.stems.map((stem, i) => {
         const sd = a.stemData.find(x => x.id === stem.id), n = sd ? sd.slices.length : 0;
@@ -740,15 +1055,15 @@ export default class App extends React.Component {
         const bytes = 44 + (sd ? sd.totalFrames : 0) * stem.bytesPerFrame;
         return {
           num: i + 1, stemName: stem.name,
-          sliceLabel: n ? n + (n > 64 ? ' slices (64 kept)' : ' slices') : 'silent — skipped',
+          sliceLabel: n ? n + (n > 64 ? ' slices (64 kept)' : ' slices') : 'no slices — skipped',
           wavName: base + '.wav', otName: base + '.ot',
           size: bytes > 1048576 ? (bytes / 1048576).toFixed(1) + ' MB' : (bytes / 1024 | 0) + ' KB',
           onWav: () => n && this.download(base + '.wav', this.buildWav(sd, stem)),
           onOt: () => n && this.download(base + '.ot', this.buildOt(sd)),
         };
-      }).filter((f, i) => { const sd = a.stemData.find(x => x.id === S.stems[i].id); return sd; });
+      });
       const totB = vals.fileCards.reduce((s, f) => { const sd = a.stemData.find(x => x.id === S.stems[f.num - 1].id); return s + (sd && sd.slices.length ? 44 + sd.totalFrames * S.stems[f.num - 1].bytesPerFrame + 832 : 0); }, 0);
-      const nF = vals.fileCards.filter(f => !/silent/.test(f.sliceLabel)).length;
+      const nF = vals.fileCards.filter(f => !/no slices/.test(f.sliceLabel)).length;
       vals.exportSummary = nF * 2 + ' files · ' + (totB / 1048576).toFixed(1) + ' MB total';
       vals.onZip = this.exportZip; vals.zipBusy = S.zipBusy;
       vals.zipLabel = S.zipBusy ? 'Packing ZIP…' : 'Download all (ZIP)';

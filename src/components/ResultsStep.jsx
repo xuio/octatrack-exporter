@@ -11,14 +11,14 @@ function Transport({ vals }) {
         <svg width="9" height="9" viewBox="0 0 9 9"><rect width="9" height="9" fill="currentColor" /></svg>
       </button>
       <span className="mono" ref={vals.posRef} style={{ fontSize: 14, letterSpacing: '.08em', color: 'var(--color-accent-300)', border: '1px solid var(--color-neutral-800)', borderRadius: 4, padding: '2px 10px', background: 'var(--color-surface)', minWidth: 74, textAlign: 'center' }}>{vals.posLabel}</span>
-      <span style={{ fontSize: 10.5, color: 'var(--color-neutral-500)' }}>from bar <b className="mono" style={{ color: 'var(--color-neutral-300)', fontWeight: 500 }}>{vals.startMeasure}</b> — click the ruler to move</span>
+      <button className={'tb ' + vals.followCls} onClick={vals.onToggleFollow} title="Keep the view following the playhead">Follow</button>
       {vals.hasLoop && (
-        <button className="tag tag-accent" style={{ fontSize: 10, border: 'none', cursor: 'pointer' }} onClick={vals.onClearLoop} title="Release loop">⟳ looping {vals.loopLabel} ✕</button>
+        <button className="tag tag-accent" style={{ fontSize: 10, border: 'none', cursor: 'pointer' }} onClick={vals.onClearLoop} title="Release the loop and keep playing from here">⟳ looping {vals.loopLabel} ✕</button>
       )}
       <div style={{ display: 'inline-flex', flex: 'none', alignItems: 'center', gap: 6, marginLeft: 8 }}>
         <span style={{ fontSize: 10, color: 'var(--color-neutral-500)' }}>VOL</span>
         <input type="range" min="0" max="1" step="0.01" style={{ width: 90 }} value={vals.vol} onChange={vals.onVol} />
-        <canvas ref={vals.masterMeterRef} width="66" height="10" style={{ width: 66, height: 10, background: 'var(--color-neutral-900)', borderRadius: 2 }} title="Master level" />
+        <canvas ref={vals.masterMeterRef} style={{ width: 66, height: 10, background: 'var(--color-neutral-900)', borderRadius: 2 }} title="Master level" />
       </div>
       <div style={{ display: 'inline-flex', flex: 'none', alignItems: 'center', gap: 4, marginLeft: 8 }}>
         <span style={{ fontSize: 10, color: 'var(--color-neutral-500)' }}>THRESHOLD</span>
@@ -29,7 +29,7 @@ function Transport({ vals }) {
         <span style={{ fontSize: 10, color: 'var(--color-neutral-500)' }}>dBFS</span>
       </div>
       <div style={{ display: 'inline-flex', flex: 'none', gap: 4, alignItems: 'center', marginLeft: 8 }}>
-        <span style={{ fontSize: 10, color: 'var(--color-neutral-500)' }}>ZOOM</span>
+        <span style={{ fontSize: 10, color: 'var(--color-neutral-500)' }} title="Pinch or ⌘/Ctrl-scroll on the timeline to zoom">ZOOM</span>
         <button className="tb" style={{ minWidth: 24, height: 22 }} onClick={vals.onZoomOut}>−</button>
         <button className="tb" style={{ minWidth: 24, height: 22 }} onClick={vals.onZoomIn}>+</button>
         <button className="tb" style={{ height: 22 }} onClick={vals.onZoomFit}>Fit</button>
@@ -45,6 +45,9 @@ function Transport({ vals }) {
         <button className={'tb ' + vals.fftCls} style={{ height: 24 }} onClick={vals.onToggleFft} title="Per-track spectrum analyzer">FFT</button>
       </div>
       <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+        {vals.editCount > 0 && (
+          <button className="tb" onClick={vals.onResetEdits} title="Discard manual slice edits and go back to automatic trimming">{vals.editCount} edit{vals.editCount > 1 ? 's' : ''} ✕</button>
+        )}
         {vals.hasWarnings && (
           <button className="tb" onClick={vals.onToggleWarn}><span style={{ color: 'var(--color-accent-300)' }}>◆</span> {vals.warnCount} warnings</button>
         )}
@@ -58,27 +61,49 @@ function Transport({ vals }) {
   );
 }
 
+// Whole-song strip: click or drag anywhere to move the playhead; the lighter
+// rectangle is the part of the song the timeline below is showing.
+function Overview({ vals }) {
+  return (
+    <div ref={vals.ovRef} onPointerDown={vals.onOvDown} title="Click or drag to jump"
+      style={{ position: 'relative', height: 26, flex: 'none', borderBottom: '1px solid var(--color-divider)', background: 'var(--color-surface)', cursor: 'ew-resize', userSelect: 'none', overflow: 'hidden' }}>
+      {vals.ovRegions.map(r => (
+        <div key={r.k} style={{ position: 'absolute', top: 0, bottom: 0, left: r.left + '%', width: r.width + '%', borderLeft: '1px solid var(--color-neutral-800)', background: r.bg, overflow: 'hidden', padding: '5px 0 0 4px', pointerEvents: 'none' }}>
+          <span style={{ fontSize: 9, letterSpacing: '.04em', color: 'var(--color-neutral-500)', whiteSpace: 'nowrap' }}>{r.label}</span>
+        </div>
+      ))}
+      <div ref={vals.ovVpRef} style={{ position: 'absolute', top: 0, bottom: 0, background: 'color-mix(in srgb,var(--color-accent) 12%,transparent)', borderLeft: '1px solid var(--color-accent-600)', borderRight: '1px solid var(--color-accent-600)', pointerEvents: 'none' }} />
+      <div ref={vals.ovPhRef} style={{ position: 'absolute', top: 0, bottom: 0, width: 1, background: 'var(--color-accent)', boxShadow: '0 0 5px var(--color-accent)', pointerEvents: 'none' }} />
+    </div>
+  );
+}
+
 function Timeline({ vals }) {
   return (
     <>
-      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: vals.railCols, minHeight: 0 }}>
-        <div style={{ borderRight: '1px solid var(--color-neutral-800)' }}>
+      <Overview vals={vals} />
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: vals.railW + 'px 1fr', minHeight: 0 }}>
+        <div style={{ position: 'relative', borderRight: '1px solid var(--color-neutral-800)', overflow: 'hidden' }}>
           <div style={{ height: 58, borderBottom: '1px solid var(--color-neutral-800)' }} />
           {vals.lanes.map(lane => (
-            <div key={lane.name} style={{ height: vals.laneH, display: 'flex', alignItems: 'center', gap: 5, padding: '0 8px', borderBottom: '1px solid color-mix(in srgb,var(--color-neutral-800) 45%,transparent)', fontSize: 11, letterSpacing: '.06em', color: 'var(--color-neutral-300)' }}>
+            <div key={lane.id} style={{ position: 'relative', height: vals.laneH, display: 'flex', alignItems: 'center', gap: 5, padding: '0 8px', borderBottom: '1px solid color-mix(in srgb,var(--color-neutral-800) 45%,transparent)', fontSize: 11, letterSpacing: '.06em', color: 'var(--color-neutral-300)' }}>
               <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lane.name}</span>
               <span style={{ display: 'flex', gap: 3, flex: 'none' }}>
                 <button className={'msb ' + lane.mCls} onClick={lane.onMute}>M</button>
                 <button className={'msb ' + lane.sCls} onClick={lane.onSolo}>S</button>
               </span>
               {vals.scopesOn && (
-                <canvas ref={lane.scopeRef} width="54" height="34" style={{ flex: 'none', width: 54, height: 'calc(100% - 12px)', background: 'var(--color-bg)', border: '1px solid color-mix(in srgb,var(--color-neutral-800) 60%,transparent)', borderRadius: 3 }} />
+                <canvas ref={lane.scopeRef} style={{ flex: 'none', width: vals.scopeW, height: 'calc(100% - 12px)', background: 'var(--color-bg)', border: '1px solid color-mix(in srgb,var(--color-neutral-800) 60%,transparent)', borderRadius: 3 }} />
               )}
-              <canvas ref={lane.meterRef} width="5" height="40" style={{ flex: 'none', width: 5, height: 'calc(100% - 12px)', background: 'var(--color-neutral-900)', borderRadius: 2 }} />
+              <canvas ref={lane.meterRef} style={{ flex: 'none', width: 5, height: 'calc(100% - 12px)', background: 'var(--color-neutral-900)', borderRadius: 2 }} />
+              <div onPointerDown={vals.onLaneResize} title="Drag to resize track height"
+                style={{ position: 'absolute', left: 0, right: 0, bottom: -2, height: 5, cursor: 'ns-resize', zIndex: 2 }} />
             </div>
           ))}
+          <div onPointerDown={vals.onRailResize} title="Drag to resize the track column"
+            style={{ position: 'absolute', top: 0, bottom: 0, right: -2, width: 5, cursor: 'col-resize', zIndex: 3 }} />
         </div>
-        <div style={{ overflowX: 'auto', overflowY: 'hidden' }} ref={vals.scrollRef}>
+        <div style={{ overflowX: 'auto', overflowY: 'hidden' }} ref={vals.scrollRef} onScroll={vals.onScroll}>
           <div style={{ position: 'relative', width: vals.tlWidth }}>
             <div style={{ height: 40, position: 'relative', borderBottom: '1px solid color-mix(in srgb,var(--color-neutral-800) 55%,transparent)' }}>
               {vals.regionBlocks.map((rb, i) => (
@@ -89,22 +114,31 @@ function Timeline({ vals }) {
                 </div>
               ))}
             </div>
-            <div style={{ height: 18, position: 'relative', borderBottom: '1px solid var(--color-neutral-800)', cursor: 'pointer', backgroundImage: vals.rulerGrid }} onClick={vals.onRulerClick}>
+            <div style={{ height: 18, position: 'relative', borderBottom: '1px solid var(--color-neutral-800)', cursor: 'ew-resize', backgroundImage: vals.rulerGrid }} onPointerDown={vals.onRulerDown}>
               {vals.barTicks.map(bt => (
                 <span key={bt.n} className="mono" style={{ position: 'absolute', left: bt.left, top: 2, fontSize: 9, color: 'var(--color-neutral-500)', paddingLeft: 3, borderLeft: '1px solid var(--color-neutral-700)', pointerEvents: 'none' }}>{bt.n}</span>
               ))}
             </div>
             {vals.lanes.map(lane => (
-              <div key={lane.name} onClick={vals.onDeselect} style={{ height: vals.laneH, position: 'relative', borderBottom: '1px solid color-mix(in srgb,var(--color-neutral-800) 45%,transparent)', backgroundImage: vals.laneGrid, opacity: lane.op }}>
+              <div key={lane.id} onClick={vals.onDeselect} style={{ height: vals.laneH, position: 'relative', borderBottom: '1px solid color-mix(in srgb,var(--color-neutral-800) 45%,transparent)', backgroundImage: vals.laneGrid, opacity: lane.op }}>
+                {lane.ghosts.map(g => (
+                  <div key={'g' + g.k} className="slice-ghost" onClick={g.onClick} title={g.tip} style={{ left: g.left, width: g.width }} />
+                ))}
                 {lane.slices.map(sl => (
-                  <div key={sl.num} className="slice-block" onClick={sl.onClick} onDoubleClick={sl.onDbl} title={sl.tip}
+                  <div key={sl.key} className="slice-block" onClick={sl.onClick} onDoubleClick={sl.onDbl} title={sl.tip}
                     style={{ left: sl.left, width: sl.width, border: '1px solid ' + sl.border, boxShadow: sl.glow }}>
-                    <svg viewBox={sl.vb} preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }}>
-                      <path d={sl.p1} fill={sl.f1} opacity={sl.o1} />
-                      <path d={sl.p2} fill={sl.f2} />
-                      <path d={sl.p3} fill={sl.f3} />
-                    </svg>
-                    <b className="mono" style={{ position: 'absolute', top: 0, left: 4, fontSize: 9, fontWeight: 500, color: 'var(--color-accent-200)' }}>{sl.num}</b>
+                    {sl.hasWave && (
+                      <svg viewBox={sl.vb} preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }}>
+                        <path d={sl.p1} fill={sl.f1} opacity={sl.o1} />
+                        <path d={sl.p2} fill={sl.f2} />
+                        <path d={sl.p3} fill={sl.f3} />
+                      </svg>
+                    )}
+                    <b className="mono" style={{ position: 'absolute', top: 0, left: 4, fontSize: 9, fontWeight: 500, color: 'var(--color-accent-200)' }}>{sl.num}{sl.edited ? '✎' : ''}</b>
+                    {sl.selected && <>
+                      <div className="trim-h" onPointerDown={sl.onTrimL} title="Drag to trim the start (snaps to bars)" style={{ left: 0 }} />
+                      <div className="trim-h" onPointerDown={sl.onTrimR} title="Drag to trim the end (snaps to bars)" style={{ right: 0 }} />
+                    </>}
                   </div>
                 ))}
               </div>
@@ -112,22 +146,35 @@ function Timeline({ vals }) {
             {vals.regionLines.map((rl, i) => (
               <div key={i} style={{ position: 'absolute', top: 40, bottom: 0, left: rl.left, width: 1, background: 'color-mix(in srgb,var(--color-neutral-600) 45%,transparent)', pointerEvents: 'none' }} />
             ))}
-            <div ref={vals.playheadRef} style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 1, background: 'var(--color-accent)', boxShadow: '0 0 6px var(--color-accent)', pointerEvents: 'none', transform: `translateX(${vals.playheadPx}px)` }} />
+            <div ref={vals.playheadRef} onPointerDown={vals.onPlayheadDown} style={{ position: 'absolute', top: 0, bottom: 0, left: -5, width: 11, cursor: 'ew-resize', transform: `translateX(${vals.playheadPx}px)`, zIndex: 4 }}>
+              <div style={{ position: 'absolute', top: 0, bottom: 0, left: 5, width: 1, background: 'var(--color-accent)', boxShadow: '0 0 6px var(--color-accent)' }} />
+              <div style={{ position: 'absolute', top: 0, left: 1, width: 9, height: 7, background: 'var(--color-accent)', clipPath: 'polygon(0 0,100% 0,50% 100%)' }} />
+            </div>
           </div>
         </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '7px 16px', borderTop: '1px solid var(--color-divider)', fontSize: 11, color: 'var(--color-neutral-400)', minHeight: 34 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 16px', borderTop: '1px solid var(--color-divider)', fontSize: 11, color: 'var(--color-neutral-400)', minHeight: 34, flexWrap: 'wrap' }}>
         {vals.hasSel ? (
           <>
             <span className="tag tag-accent" style={{ fontSize: 10 }}>{vals.selTitle}</span>
             <span>region <b style={{ color: 'var(--color-neutral-200)', fontWeight: 500 }}>{vals.selRegion}</b></span>
-            <span>audio from bar <b style={{ color: 'var(--color-neutral-200)', fontWeight: 500 }}>{vals.selFromBar}</b></span>
+            <span>song bar <b style={{ color: 'var(--color-neutral-200)', fontWeight: 500 }}>{vals.selFromBar}</b> = pattern bar <b style={{ color: 'var(--color-neutral-200)', fontWeight: 500 }}>{vals.selPatternBar}</b></span>
             <span>trig step <b className="mono" style={{ color: 'var(--color-accent-300)', fontWeight: 500 }}>{vals.selTrig}</b></span>
             <span className="mono" style={{ color: 'var(--color-neutral-500)' }}>{vals.selSamples}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+              <span style={{ fontSize: 10, color: 'var(--color-neutral-500)' }}>START</span>
+              <button className="tb" style={{ minWidth: 20, height: 20 }} onClick={() => vals.onNudge('l', -1)} title="Extend start by one bar">−</button>
+              <button className="tb" style={{ minWidth: 20, height: 20 }} onClick={() => vals.onNudge('l', 1)} title="Trim start by one bar">+</button>
+              <span style={{ fontSize: 10, color: 'var(--color-neutral-500)', marginLeft: 4 }}>END</span>
+              <button className="tb" style={{ minWidth: 20, height: 20 }} onClick={() => vals.onNudge('r', -1)} title="Trim end by one bar">−</button>
+              <button className="tb" style={{ minWidth: 20, height: 20 }} onClick={() => vals.onNudge('r', 1)} title="Extend end by one bar">+</button>
+            </span>
             <button className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }} onClick={vals.onAudition}>Audition</button>
+            {vals.selEdited && <button className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }} onClick={vals.onResetSel}>Reset trim</button>}
+            <button className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }} onClick={vals.onDeleteSel} title="Delete this slice (Del)">Delete</button>
           </>
         ) : (
-          <span style={{ color: 'var(--color-neutral-600)' }}>Select a slice to inspect it — double-click to audition.</span>
+          <span style={{ color: 'var(--color-neutral-600)' }}>Select a slice to trim or delete it — drag its edges to trim, double-click to audition. Dashed blocks add a slice back.</span>
         )}
       </div>
     </>

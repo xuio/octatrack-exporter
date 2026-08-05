@@ -3,6 +3,8 @@ export * from './constants.js';
 export * from './wav.js';
 export * from './midi.js';
 export * from './analysis.js';
+export * from './slices.js';
+export * from './unzip.js';
 export * from './otFile.js';
 export * from './zip.js';
 export * from './projectFile.js';

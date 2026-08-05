@@ -52,3 +52,11 @@ input[type=range]::-moz-range-thumb { width: 11px; height: 11px; border-radius: 
 /* timeline slice blocks */
 .slice-block { position: absolute; top: 5px; bottom: 5px; background: var(--color-accent-900); border-radius: 3px; overflow: hidden; cursor: pointer; }
 .slice-block:hover { border-color: var(--color-accent-500) !important; }
+
+/* placeholder for a region with no slice — click to add one back */
+.slice-ghost { position: absolute; top: 5px; bottom: 5px; border: 1px dashed var(--color-neutral-700); border-radius: 3px; opacity: .35; cursor: copy; }
+.slice-ghost:hover { opacity: .85; border-color: var(--color-accent-500); background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
+
+/* drag handles on the edges of the selected slice */
+.trim-h { position: absolute; top: 0; bottom: 0; width: 7px; cursor: ew-resize; background: linear-gradient(var(--color-accent-400), var(--color-accent-400)) center / 3px 60% no-repeat; opacity: .8; }
+.trim-h:hover { opacity: 1; background-color: color-mix(in srgb, var(--color-accent) 30%, transparent); }

@@ -5,12 +5,13 @@ export default function FilesStep({ vals }) {
         <div className="drop" onDragOver={vals.onDragOver} onDrop={vals.onDrop} onClick={vals.onPickFiles} style={{ padding: '36px 24px' }}>
           <div style={{ fontSize: 15, color: 'var(--color-neutral-200)', marginBottom: 6 }}>Drop stems + arrangement MIDI</div>
           <div style={{ fontSize: 12, color: 'var(--color-neutral-500)', lineHeight: 1.6 }}>
-            5–6 stereo WAV stems (44.1 kHz, 16/24-bit)<br />plus one MIDI file — a note at each section start<br />and one final note at the song's end
+            5–6 stereo WAV stems (44.1 kHz, 16/24-bit)<br />plus one MIDI file — a note at each section start<br />and one final note at the song's end<br />
+            <span style={{ color: 'var(--color-neutral-600)' }}>a .zip of all of them works too</span>
           </div>
           <div style={{ marginTop: 14 }}><span className="btn btn-secondary" style={{ fontSize: 12, pointerEvents: 'none' }}>Browse files</span></div>
           {vals.isReading && <div className="pulse" style={{ marginTop: 10, fontSize: 11.5, color: 'var(--color-accent-300)' }}>{vals.readingLabel}</div>}
         </div>
-        <input type="file" multiple accept=".wav,.mid,.midi" style={{ display: 'none' }} ref={vals.fileInputRef} onChange={vals.onFileInput} />
+        <input type="file" multiple accept=".wav,.mid,.midi,.zip" style={{ display: 'none' }} ref={vals.fileInputRef} onChange={vals.onFileInput} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 11, color: 'var(--color-neutral-500)' }}>{vals.demoLead}</span>
           {vals.demosVm.map(d => (
