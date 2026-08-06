@@ -1,4 +1,5 @@
-import { parseWav, makeDemo } from '../lib/index.js';
+import { parseWav, parseAiff, makeDemo } from '../lib/index.js';
+import { decodeFlac } from '../audio/decodeFlac.js';
 
 /**
  * Promise wrapper around the audio worker, with a same-thread fallback so the
@@ -46,14 +47,24 @@ class AudioClient {
 
 const client = new AudioClient();
 
-/** Decode a WAV. The input buffer is transferred, so do not reuse it. */
-export async function decodeWav(buffer, fileName) {
-  const job = client.run('parseWav', { buffer, fileName }, [buffer]);
-  if (!job) return parseWav(buffer, fileName);
+export const AUDIO_RE = /\.(wav|aiff?|flac)$/i;
+
+/**
+ * Decode one stem. The input buffer is transferred to the worker, so do not
+ * reuse it. FLAC goes through the browser's decoder on this thread — see
+ * audio/decodeFlac.js for why it cannot be moved off it.
+ */
+export async function decodeAudio(buffer, fileName) {
+  if (/\.flac$/i.test(fileName)) return decodeFlac(buffer, fileName);
+  const local = () => (/\.aiff?$/i.test(fileName) ? parseAiff(buffer, fileName) : parseWav(buffer, fileName));
+  const job = client.run('decodeAudio', { buffer, fileName }, [buffer]);
+  if (!job) return local();
   try {
     return await job;
-  } catch {
-    // the buffer is gone with the worker; the caller re-reads the file
+  } catch (err) {
+    // A decoder error is the file's fault and worth reporting as-is; anything
+    // else means the worker died, and the buffer went with it.
+    if (err.message.startsWith(fileName)) throw err;
     throw new Error(`${fileName}: could not be decoded`);
   }
 }

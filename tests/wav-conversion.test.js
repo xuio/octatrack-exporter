@@ -39,7 +39,21 @@ test('mono is duplicated to stereo without touching the level', () => {
   assert.match(parsed.warnings.join(), /mono/);
   assert.deepEqual([...parsed.chL], [...parsed.chR], 'both channels carry the same signal');
   assert.ok(Math.abs(peak(parsed.chL) - 0.5) < 0.001, 'peak is unchanged');
-  assert.equal(parsed.bytesPerFrame, 6, 'written back as 24-bit stereo');
+  // Only the channel count needed changing, so the word length is left alone:
+  // re-encoding 16-bit material at 24-bit would double the file for no gain.
+  assert.equal(parsed.bytesPerFrame, 4, 'written back as 16-bit stereo');
+});
+
+test('16-bit mono is duplicated sample-for-sample, not requantized', () => {
+  const frames = 500;
+  const buffer = wav({ channels: 1, bits: 16, frames, sample: i => Math.sin(i / 3) * (i % 97) / 97 });
+  const source = new Int16Array(buffer, 44, frames);   // what the file actually holds
+  const parsed = parseWav(buffer, 'mono16.wav');
+  const out = new Int16Array(parsed.pcm.buffer, parsed.pcm.byteOffset, frames * 2);
+  for (let i = 0; i < frames; i++) {
+    assert.equal(out[i * 2], source[i], `left sample ${i}`);
+    assert.equal(out[i * 2 + 1], source[i], `right sample ${i}`);
+  }
 });
 
 test('more than two channels keeps the first two, in order', () => {

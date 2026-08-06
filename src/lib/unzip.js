@@ -45,7 +45,7 @@ export function audioEntries(entries) {
   return entries
     .filter(e => {
       const base = e.name.split('/').pop() || '';
-      return base && !base.startsWith('.') && !e.name.includes('__MACOSX') && /\.(wav|mid|midi)$/i.test(base);
+      return base && !base.startsWith('.') && !e.name.includes('__MACOSX') && /\.(wav|aiff?|flac|mid|midi)$/i.test(base);
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 }

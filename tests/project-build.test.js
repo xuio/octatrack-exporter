@@ -1,0 +1,114 @@
+// The whole export path in one pass: demo stems and MIDI → analysis → slices →
+// a rewritten project folder, with the readback verifier running on the result.
+// Everything upstream is the code the app actually calls, so a change that makes
+// the writers and the pattern table disagree fails here rather than on a device.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  makeDemo, parseMidi, parseWav, regionsFromTicks, boundariesFor,
+  measurePeaks, buildStemSlices, dbToLin,
+} from '../src/lib/index.js';
+import { buildProject } from '../src/export/projectBuild.js';
+import { makeBank, makeMarkers } from './fixtures.js';
+
+const PROJECT_TEXT = '[META]\r\nTYPE=OCTATRACK DPS-1 PROJECT\r\n[/META]\r\n\r\n'
+  + '[SETTINGS]\r\nTEMPOx24=2880\r\n[/SETTINGS]\r\n\r\n############################\r\n\r\n';
+
+/** Run the app's analysis pipeline over the demo song. */
+function analyzeDemo(threshold = -45) {
+  const demo = makeDemo('shake');
+  const midi = parseMidi(demo.midi.data, demo.midi.name);
+  const stems = demo.files.map((f, i) => ({ id: i + 1, name: `S${i + 1}`, ...parseWav(f.data, f.name) }));
+  const { regions, totalMeasures } = regionsFromTicks(midi.ticks, midi.ppq);
+  const bounds = boundariesFor(midi.bpm, totalMeasures);
+  const regs = regions.filter(r => r.start < totalMeasures);
+
+  const tracks = new Map();
+  for (const stem of stems) {
+    const peaks = measurePeaks(stem.chL, stem.chR, bounds);
+    tracks.set(stem.id, buildStemSlices(peaks, regs, bounds, dbToLin(threshold), {}));
+  }
+  return { stems, tracks, regions: regs, bpm: midi.bpm };
+}
+
+/** A project folder in the shape buildProject reads: `rel` plus lazy bytes. */
+function fakeProject(files) {
+  return {
+    folder: 'DEMO',
+    fileList: Object.entries(files).map(([rel, data]) => ({ rel, bytes: async () => data })),
+  };
+}
+
+const encode = text => new Uint8Array([...text].map(c => c.charCodeAt(0)));
+const texts = report => report.map(r => r.text);
+
+test('a generated project verifies against its own pattern table', async () => {
+  const { stems, tracks, regions, bpm } = analyzeDemo();
+  const { entries, report } = await buildProject({
+    project: fakeProject({
+      'project.work': encode(PROJECT_TEXT),
+      'markers.work': makeMarkers(),
+      'bank02.work': makeBank(),
+      'bank03.work': makeBank(),
+    }),
+    stems, tracks, regions, bpm, abbrev: 'DEMO', folder: 'DEMO',
+  });
+
+  const problems = report.filter(r => r.warn).map(r => r.text);
+  assert.deepEqual(problems.filter(t => /Readback/.test(t)), [], 'no readback mismatches');
+  assert.match(texts(report).join('\n'), /Readback verified: \d+ trigs across \d+ patterns/);
+
+  // and the files themselves are all there, inside the project folder
+  const names = entries.map(e => e.name);
+  assert.ok(names.includes('DEMO/project.work'));
+  assert.ok(names.includes('DEMO/markers.work'));
+  assert.ok(names.includes('DEMO/bank02.work'));
+  assert.ok(names.includes('PATTERNS.html'));
+  assert.equal(names.filter(n => n.endsWith('.wav')).length, stems.length);
+  assert.equal(names.filter(n => n.endsWith('.ot')).length, stems.length);
+  assert.ok(names.every(n => !n.includes('AUDIO/')), 'nothing goes in the set-level AUDIO pool');
+});
+
+test('a pattern the bank writer silently skipped is caught, not shipped empty', async () => {
+  const { stems, tracks, regions, bpm } = analyzeDemo();
+
+  // The bank writer walks away from a job whose length it cannot represent. That
+  // is the right call, but on its own it is silent — the section would simply
+  // have no trigs on the device. The readback pass is what turns it into a
+  // reported problem.
+  const broken = regions.map((r, i) => (i === 1 ? { ...r, scale: { ...r.scale, LEN: 128 } } : r));
+
+  const { report } = await buildProject({
+    project: fakeProject({
+      'project.work': encode(PROJECT_TEXT),
+      'markers.work': makeMarkers(),
+      'bank02.work': makeBank(),
+      'bank03.work': makeBank(),
+    }),
+    stems, tracks, regions: broken, bpm, abbrev: 'DEMO', folder: 'DEMO',
+  });
+
+  const problems = report.filter(r => r.warn).map(r => r.text);
+  assert.ok(
+    problems.some(t => /Readback check.*P2/.test(t)),
+    `expected pattern 2 to be reported, got:\n${problems.join('\n')}`,
+  );
+});
+
+test('an unreadable bank is copied through untouched instead of being corrupted', async () => {
+  const { stems, tracks, regions, bpm } = analyzeDemo();
+  const damaged = makeBank();
+  damaged[21] = 99;                                  // a bank version OSSC was never verified against
+  const { entries, report } = await buildProject({
+    project: fakeProject({
+      'project.work': encode(PROJECT_TEXT),
+      'markers.work': makeMarkers(),
+      'bank02.work': damaged,
+    }),
+    stems, tracks, regions, bpm, abbrev: 'DEMO', folder: 'DEMO',
+  });
+
+  const out = entries.find(e => e.name === 'DEMO/bank02.work').data;
+  assert.deepEqual([...out], [...damaged], 'byte-identical to what came in');
+  assert.match(report.filter(r => r.warn).map(r => r.text).join('\n'), /copied unchanged/);
+});

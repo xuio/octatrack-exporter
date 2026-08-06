@@ -78,5 +78,20 @@ export function useTimelineView({ follow, setFollow, playing }) {
     }
   }, []);
 
-  return { ppm, setPpm, viewport, scrollerRef, attachScroller, onScroll, onWheel, zoomAt, zoomToFit, keepPlayheadVisible };
+  /**
+   * Scroll the least amount that brings a pixel span into view — used when the
+   * keyboard moves the selection to a clip that is off screen. A clip wider than
+   * the viewport is aligned to its start rather than chasing its end.
+   */
+  const revealRange = useCallback((fromPx, toPx) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const pad = 24, width = el.clientWidth, left = el.scrollLeft;
+    if (fromPx - pad < left) el.scrollLeft = Math.max(0, fromPx - pad);
+    else if (toPx + pad > left + width) el.scrollLeft = Math.max(0, Math.min(toPx + pad - width, fromPx - pad));
+    else return;
+    setViewport({ scrollX: el.scrollLeft, width: el.clientWidth });
+  }, []);
+
+  return { ppm, setPpm, viewport, scrollerRef, attachScroller, onScroll, onWheel, zoomAt, zoomToFit, keepPlayheadVisible, revealRange };
 }

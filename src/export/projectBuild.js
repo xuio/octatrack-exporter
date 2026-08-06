@@ -1,5 +1,6 @@
 import {
   decodeLatin1, encodeLatin1, writeStaticSlots, writeMarkersSlots, writeBankPatterns, bankPattern,
+  verifyExport,
 } from '../lib/index.js';
 import { stemEntries } from './stemFiles.js';
 import { stemFileBase } from './naming.js';
@@ -51,20 +52,26 @@ export async function buildProject({ project, stems, tracks, regions, bpm, abbre
   const slots = [];
   const markers = [];
 
+  // What every stem is supposed to end up as. The writers below consume it, and
+  // so does the readback pass at the end — one description, checked both ways.
+  const exported = [];
   stems.forEach((stem, i) => {
     const track = tracks.get(stem.id);
     if (!track || !track.slices.length) {
       report.push({ warn: true, text: `${stem.name} has no slices — Static slot ${i + 1} left empty` });
       return;
     }
-    slots.push({ slot: i + 1, path: `${stemFileBase(stem, i, abbrev)}.wav`, bpm });
-    if (i < 128) {
-      markers.push({
-        slot0: i,
-        totalFrames: track.totalFrames,
-        slices: track.slices.slice(0, 64).map(s => ({ start: s.outStart, end: s.outEnd })),
-      });
-    }
+    const base = stemFileBase(stem, i, abbrev);
+    exported.push({
+      slot0: i,
+      wav: `${base}.wav`,
+      ot: `${base}.ot`,
+      totalFrames: track.totalFrames,
+      bytesPerFrame: stem.bytesPerFrame,
+      slices: track.slices.slice(0, 64).map(s => ({ start: s.outStart, end: s.outEnd })),
+    });
+    slots.push({ slot: i + 1, path: `${base}.wav`, bpm });
+    if (i < 128) markers.push(exported[exported.length - 1]);
   });
   entries.push(...stemEntries({ stems, tracks, bpm, abbrev, prefix: `${folder}/` }));
 
@@ -72,7 +79,8 @@ export async function buildProject({ project, stems, tracks, regions, bpm, abbre
 
   const jobs = bankJobs(regions, stems, tracks, report);
   const pending = new Set(Object.keys(jobs).map(Number));
-  let slotsWritten = false, banksWritten = 0, trigsWritten = 0, sawMarkers = false;
+  const written = {};   // banks that were actually programmed, for the readback pass
+  let slotsWritten = false, banksWritten = 0, trigsWritten = 0, sawMarkers = false, markersWritten = false;
 
   for (const file of project.fileList) {
     const rel = file.rel;
@@ -97,6 +105,7 @@ export async function buildProject({ project, stems, tracks, regions, bpm, abbre
         entries.push({ name: `${folder}/${rel}`, data: bytes });
       } else {
         entries.push({ name: `${folder}/${rel}`, data: res.bytes });
+        markersWritten = true;
         report.push({ text: `markers.work: trim + 64-slice grid written for ${res.slotsWritten} Static slots, checksum updated — slices appear on the device immediately` });
       }
     } else if (bankMatch && jobs[Number(bankMatch[1])]) {
@@ -116,6 +125,7 @@ export async function buildProject({ project, stems, tracks, regions, bpm, abbre
           banksWritten++;
           trigsWritten += res.trigsWritten;
           pending.delete(Number(bankMatch[1]));
+          written[Number(bankMatch[1])] = jobs[Number(bankMatch[1])];
           report.push({ text: `${rel}: ${res.patternsWritten} patterns written — trigs + slice p-locks (samples via TRK DEFAULT, no sample locks) + per-track scales, master length INF · structure verified against this file (pattern ${res.psize} B · track section ${res.attSize} B) · parts/scenes byte-identical · checksum updated` });
         }
       }
@@ -135,6 +145,20 @@ export async function buildProject({ project, stems, tracks, regions, bpm, abbre
     name: 'PATTERNS.html',
     data: new TextEncoder().encode(patternSheetHtml({ stems, tracks, regions, bpm, abbrev, withSetup: true })),
   });
+
+  // Read the generated files back and diff them against what was asked for. This
+  // cannot prove the device agrees with our reading of the format, but it does
+  // prove the writers did what this build intended — which is where every format
+  // bug so far has actually been.
+  const check = verifyExport({
+    entries, folder, bpm, stems: exported, banks: written, markersWritten,
+  });
+  for (const problem of check.problems) {
+    report.push({ warn: true, text: `Readback check: ${problem}` });
+  }
+  report.unshift(check.ok
+    ? { text: `Readback verified: ${check.counts.trigs} trigs across ${check.counts.patterns} patterns, ${check.counts.slices} slices and every checksum decode back to exactly what the pattern table shows` }
+    : { warn: true, text: `Readback found ${check.problems.length} mismatch(es) between the generated files and the pattern table — see below before loading this on the device` });
 
   report.unshift({ text: 'PATTERNS.html reference sheet added (verification aid + manual fallback)' });
   report.unshift({ text: `${banksWritten ? `${banksWritten} bank(s) pattern-programmed with ${trigsWritten} trigs; ` : ''}all other bank files copied byte-identical — parts and scenes untouched in every bank` });

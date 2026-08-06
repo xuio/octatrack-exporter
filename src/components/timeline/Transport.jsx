@@ -32,11 +32,12 @@ const Segmented = ({ name, options, value, onChange, padding = '3px 8px', fontSi
 );
 
 export default function Transport({
-  playing, positionRef, positionLabel, follow, edits, warnings, view, waveStyle, scopeMode,
-  volume, threshold, thresholdDraft, masterAnalyser, colors, active,
+  playing, positionRef, positionLabel, follow, edits, history, warnings, view, waveStyle, scopeMode,
+  volume, threshold, thresholdDraft, masterAnalyser, colors, active, showKeys,
   onPlay, onStop, onToStart, onToggleFollow, onUndo, onRedo, onClearLoop, loopLabel,
-  onVolume, onThresholdSlide, onThresholdDraft, onThresholdCommit, onThresholdStep,
-  onZoomIn, onZoomOut, onZoomFit, onWaveStyle, onScopeMode, onView, onResetEdits, onToggleWarnings, onExport,
+  onVolume, onThresholdGrab, onThresholdSlide, onThresholdRelease, onThresholdDraft, onThresholdCommit, onThresholdStep,
+  onZoomIn, onZoomOut, onZoomFit, onWaveStyle, onScopeMode, onView, onResetEdits,
+  onToggleWarnings, onToggleKeys, onExport,
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', borderBottom: '1px solid var(--color-divider)', flexWrap: 'wrap' }}>
@@ -67,8 +68,10 @@ export default function Transport({
       </button>
 
       <span style={{ display: 'inline-flex', gap: 3 }}>
-        <button className="tb" onClick={onUndo} disabled={!edits.canUndo} title="Undo slice edit (⌘Z)" aria-label="Undo slice edit"><UndoIcon /></button>
-        <button className="tb" onClick={onRedo} disabled={!edits.canRedo} title="Redo slice edit (⇧⌘Z)" aria-label="Redo slice edit"><UndoIcon flip /></button>
+        <button className="tb" onClick={onUndo} disabled={!history.canUndo}
+          title={history.canUndo ? `Undo ${history.undoLabel} (⌘Z)` : 'Nothing to undo'} aria-label="Undo"><UndoIcon /></button>
+        <button className="tb" onClick={onRedo} disabled={!history.canRedo}
+          title={history.canRedo ? `Redo ${history.redoLabel} (⇧⌘Z)` : 'Nothing to redo'} aria-label="Redo"><UndoIcon flip /></button>
       </span>
 
       {loopLabel && (
@@ -84,7 +87,10 @@ export default function Transport({
       </Group>
 
       <Group label="THRESHOLD">
-        <input type="range" min="-100" max="-6" step="1" aria-label="Silence threshold in dBFS" style={{ width: 78 }} value={threshold} onChange={onThresholdSlide} />
+        <input type="range" min="-100" max="-6" step="1" aria-label="Silence threshold in dBFS" style={{ width: 78 }}
+          value={threshold} onChange={onThresholdSlide}
+          onPointerDown={onThresholdGrab} onKeyDown={onThresholdGrab}
+          onPointerUp={onThresholdRelease} onKeyUp={onThresholdRelease} />
         <button className="tb" style={{ minWidth: 22, height: 22 }} onClick={() => onThresholdStep(-3)} title="−3 dB">−</button>
         <input className="input mono" type="text" inputMode="numeric" aria-label="Silence threshold in dBFS" value={thresholdDraft ?? String(threshold)}
           onChange={onThresholdDraft} onBlur={onThresholdCommit}
@@ -128,6 +134,8 @@ export default function Transport({
             <span style={{ color: 'var(--color-accent-300)' }}>◆</span> {warnings.length} warnings
           </button>
         )}
+        <button className={`tb ${showKeys ? 'on' : ''}`} onClick={onToggleKeys}
+          title="Keyboard shortcuts (?)" aria-pressed={showKeys}>Keys</button>
         <Segmented
           name="view"
           value={view}

@@ -1,11 +1,14 @@
 import { useCallback, useRef, useState } from 'react';
 import { parseMidi, readZip, audioEntries } from '../lib/index.js';
-import { decodeWav, synthesizeDemo } from '../workers/audioClient.js';
+import { decodeAudio, synthesizeDemo, AUDIO_RE } from '../workers/audioClient.js';
+
+/** Track names are uppercase and bounded — the Octatrack's own display limit. */
+export const normalizeStemName = (name) => name.toUpperCase().slice(0, 20);
 
 const stemName = (fileName) =>
-  fileName.replace(/\.wav$/i, '').replace(/[_-]?\d+$/, '').toUpperCase().slice(0, 20) || 'STEM';
+  normalizeStemName(fileName.replace(AUDIO_RE, '').replace(/[_-]?\d+$/, '')) || 'STEM';
 
-/** Pull WAV/MIDI members out of any dropped .zip archives, leaving other files alone. */
+/** Pull audio/MIDI members out of any dropped .zip archives, leaving other files alone. */
 async function expandArchives(files, errors) {
   const out = [];
   for (const file of files) {
@@ -56,11 +59,11 @@ export function useStems({ onLoaded }) {
         const buf = await file.arrayBuffer();
         if (/\.(mid|midi)$/i.test(file.name)) {
           nextMidi = parseMidi(buf, file.name);
-        } else if (/\.wav$/i.test(file.name)) {
-          const parsed = await decodeWav(buf, file.name);
+        } else if (AUDIO_RE.test(file.name)) {
+          const parsed = await decodeAudio(buf, file.name);
           collected.push({ id: nextId.current++, name: stemName(file.name), muted: false, solo: false, ...parsed });
         } else {
-          errors.push(`${file.name}: unsupported type (need .wav, .mid or .zip)`);
+          errors.push(`${file.name}: unsupported type (need .wav, .aif, .flac, .mid or .zip)`);
         }
       } catch (err) { errors.push(err.message); }
     }
@@ -97,7 +100,7 @@ export function useStems({ onLoaded }) {
     stems, midi, error, reading, demoLoading, demoNames,
     addFiles, loadDemo, setError, clear,
     removeMidi: () => setMidi(null),
-    rename: (id, name) => update(list => list.map(s => s.id === id ? { ...s, name: name.toUpperCase().slice(0, 20) } : s)),
+    rename: (id, name) => update(list => list.map(s => s.id === id ? { ...s, name: normalizeStemName(name) } : s)),
     remove: (id) => update(list => list.filter(s => s.id !== id)),
     move: (index, delta) => update(list => {
       const next = [...list], to = index + delta;

@@ -1,6 +1,8 @@
 // Barrel for the pure (DOM-free) core. Everything here is unit-testable in Node.
 export * from './constants.js';
+export * from './pcm.js';
 export * from './wav.js';
+export * from './aiff.js';
 export * from './midi.js';
 export * from './analysis.js';
 export * from './slices.js';
@@ -12,4 +14,5 @@ export * from './zip.js';
 export * from './projectFile.js';
 export * from './bankFile.js';
 export * from './markersFile.js';
+export * from './readback.js';
 export * from './demo.js';

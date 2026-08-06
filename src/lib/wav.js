@@ -1,6 +1,8 @@
 // WAV parsing/encoding. Input WAVs are normalized to the Octatrack's native
 // format (44.1 kHz stereo 16/24-bit); anything else is converted with warnings.
+// A file that is already in that format is passed through byte-for-byte.
 import { SR } from './constants.js';
+import { finalizeStereo } from './pcm.js';
 
 export function parseWav(buf, fileName) {
   const dv = new DataView(buf), u8 = new Uint8Array(buf);
@@ -26,35 +28,25 @@ export function parseWav(buf, fileName) {
     if (bits === 24) { let v = u8[p] | (u8[p + 1] << 8) | (u8[p + 2] << 16); if (v & 0x800000) v |= ~0xFFFFFF; return v / 8388608; }
     return dv.getInt32(p, true) / 2147483648;
   };
-  let chL = new Float32Array(framesIn), chR = new Float32Array(framesIn);
+  const chL = new Float32Array(framesIn), chR = new Float32Array(framesIn);
   const cR = channels >= 2 ? 1 : 0;
   for (let i = 0; i < framesIn; i++) { chL[i] = read(0, i); chR[i] = cR ? read(1, i) : chL[i]; }
-  const warnings = []; let converted = false;
-  if (channels === 1) { warnings.push('mono — duplicated to stereo'); converted = true; }
-  if (channels > 2) { warnings.push(channels + ' channels — using first two'); converted = true; }
-  if (sampleRate !== SR) {
-    warnings.push(sampleRate + ' Hz — converted to 44.1 kHz');
-    const ratio = sampleRate / SR, n = Math.floor(framesIn / ratio), L = new Float32Array(n), R = new Float32Array(n);
-    const cub = (a, b, c, d, t) => b + 0.5 * t * (c - a + t * (2 * a - 5 * b + 4 * c - d + t * (3 * (b - c) + d - a)));
-    for (let i = 0; i < n; i++) {
-      const x = i * ratio, i1 = Math.floor(x), f = x - i1;
-      const i0 = Math.max(0, i1 - 1), i2 = Math.min(framesIn - 1, i1 + 1), i3 = Math.min(framesIn - 1, i1 + 2);
-      L[i] = cub(chL[i0], chL[i1], chL[i2], chL[i3], f); R[i] = cub(chR[i0], chR[i1], chR[i2], chR[i3], f);
-    }
-    chL = L; chR = R; converted = true;
-  }
-  let outBits = bits === 16 || bits === 24 ? bits : 24;
-  if (format === 3 || bits === 32) { warnings.push(bits + '-bit ' + (format === 3 ? 'float' : 'int') + ' — converted to 24-bit'); converted = true; outBits = 24; }
-  const frames = chL.length;
-  let pcm;
-  if (!converted) pcm = u8.slice(dataOff, dataOff + frames * frameIn);
-  else { // re-encode stereo 24-bit
-    outBits = 24; pcm = new Uint8Array(frames * 6);
-    for (let i = 0; i < frames; i++) { w24(pcm, i * 6, chL[i]); w24(pcm, i * 6 + 3, chR[i]); }
-  }
-  return { fileName, frames, bits: outBits, bytesPerFrame: outBits / 8 * 2, chL, chR, pcm, warnings, converted, origSr: sampleRate, origBits: bits, origCh: channels };
+
+  const native = format === 1 && channels === 2 && sampleRate === SR && (bits === 16 || bits === 24);
+  const out = native
+    ? { chL, chR, bits, warnings: [], converted: false, pcm: u8.slice(dataOff, dataOff + framesIn * frameIn) }
+    : finalizeStereo({
+      chL, chR, sampleRate, channels, targetRate: SR,
+      srcBits: bits,
+      srcBitsLabel: format === 3 ? `${bits}-bit float` : `${bits}-bit int`,
+    });
+
+  return {
+    fileName, frames: out.chL.length, bits: out.bits, bytesPerFrame: out.bits / 8 * 2,
+    chL: out.chL, chR: out.chR, pcm: out.pcm, warnings: out.warnings, converted: out.converted,
+    origSr: sampleRate, origBits: bits, origCh: channels,
+  };
 }
-function w24(u8, p, v) { let x = Math.max(-1, Math.min(1, v)); x = Math.round(x * 8388607); if (x < 0) x += 16777216; u8[p] = x & 255; u8[p + 1] = (x >> 8) & 255; u8[p + 2] = (x >> 16) & 255; }
 
 export function encodeWav(pcm, bits) {
   const bpf = bits / 8 * 2, out = new Uint8Array(44 + pcm.length), dv = new DataView(out.buffer);

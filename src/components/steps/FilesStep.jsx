@@ -44,7 +44,7 @@ export default function FilesStep({
         <DropZone active={dragging} onClick={() => inputRef.current?.click()} style={{ padding: '36px 24px' }}>
           <div style={{ fontSize: 15, color: 'var(--color-neutral-200)', marginBottom: 6 }}>Drop stems + arrangement MIDI</div>
           <div style={{ fontSize: 12, color: 'var(--color-neutral-500)', lineHeight: 1.6 }}>
-            5–6 stereo WAV stems (44.1 kHz, 16/24-bit)<br />
+            5–6 stereo stems — WAV, AIFF or FLAC, any rate<br />
             plus one MIDI file — a note at each section start<br />
             and one final note at the song&apos;s end<br />
             <span style={{ color: 'var(--color-neutral-600)' }}>drop a folder or a .zip of them all — that works too</span>
@@ -59,7 +59,7 @@ export default function FilesStep({
           ref={inputRef}
           type="file"
           multiple
-          accept=".wav,.mid,.midi,.zip"
+          accept=".wav,.aif,.aiff,.flac,.mid,.midi,.zip"
           style={{ display: 'none' }}
           onChange={e => { onFiles([...e.target.files]); e.target.value = ''; }}
         />

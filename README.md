@@ -80,8 +80,9 @@ bounced — sample-for-sample, at the level you left it.
 
 ### What you need
 
-- **Stems** — 5–6 stereo WAVs, all starting at bar 1 and all the same length (44.1 kHz, 16/24-bit
-  is copied untouched; other formats are converted). Drop loose files, a folder, or a `.zip`.
+- **Stems** — 5–6 stereo files, all starting at bar 1 and all the same length. **WAV**, **AIFF**
+  (including AIFC `sowt`/`fl32`) and **FLAC** are all read; 44.1 kHz 16/24-bit WAV is copied
+  untouched, anything else is converted. Drop loose files, a folder, or a `.zip`.
 - **An arrangement MIDI** — one note at each section start, plus one final note marking the end of
   the song. Seven sections means eight notes. Nothing else in the file matters.
 - Optionally, **a project folder saved from your Octatrack**, if you want OSSC to build the whole
@@ -125,11 +126,15 @@ actually audible; everything else is you refining it:
 | **Threshold** | Raise it to drop quiet tails, lower it to keep them. Every slice re-trims live. |
 | **Drag a slice edge** | Trim it, quantized to bars. Drag past a section boundary and the overhang becomes its **own clip in the next section** — the same shape the import would have made. |
 | **Delete / dashed blocks** | Remove a slice, or click the dashed placeholder to bring one back. |
-| **⌘Z / ⇧⌘Z** | Undo and redo, one entry per drag. |
+| **⌘Z / ⇧⌘Z** | Undo and redo — one entry per drag, and it covers renames and the threshold too, not just clip edits. |
 | **Double-click** | Rename a track or a section right in the timeline. |
 | **Space, ruler, overview strip** | Play/stop, scrub, and jump anywhere in the song. |
 | **⟳ on a section** | Loop it. Releasing the loop keeps playing rather than stopping. |
 | **Pinch / ⌘-scroll** | Zoom; waveform detail grows as you go in. |
+
+The whole editor is reachable from the keyboard — press **?** (or the **Keys** button) for the full
+list. Arrows walk the grid of tracks × sections, and **⇧←/→** and **⌥←/→** move the selected clip's
+start and end a bar at a time, which is how you make a bar-exact edit without a steady hand.
 
 Everything you change is audible immediately — trims, deletes, undo and threshold moves all re-cue
 the transport where it is playing.
@@ -174,6 +179,20 @@ and you get back a complete copy under a name of your choosing:
 before a byte is written, and the part region — where scenes live — is checked byte-identical
 afterwards. On any mismatch that bank is copied through untouched and the sheet tells you so.
 
+**Everything written is then read back.** Once the files are assembled, OSSC decodes them again —
+every trig, the slice each one fires, the per-track scales, both slice grids, the gains and all the
+checksums — and diffs that against the pattern table on screen. The report says so explicitly:
+
+> Readback verified: 34 trigs across 7 patterns, 33 slices and every checksum decode back to
+> exactly what the pattern table shows
+
+This cannot prove the device agrees with OSSC's reading of the file format — only a device can do
+that. What it does prove is that the writers did what this build intended, which is where every
+format bug in this project's history has actually been: a slice number stored at the wrong scale, a
+trig mask byte in the wrong half-page, the recorder's +12 dB gain default. All three would have
+failed this check before reaching a CF card, and each one is now a test case in
+[`tests/readback.test.js`](tests/readback.test.js).
+
 **One step remains on the device:** on each used track, assign a **STATIC** machine and set its
 default sample (**TRK DEFAULT**) to the matching slot. Trigs carry no sample locks, so that is all
 it takes. Then hit play on `B2 P1`.
@@ -192,10 +211,18 @@ Seven schemes, generated from OKLCH ramps so contrast holds up in every one.
 
 ## Audio integrity
 
-OSSC never changes level. Stems that are already 44.1 kHz stereo 16/24-bit are copied
+OSSC never changes level. Stems that are already 44.1 kHz stereo 16/24-bit WAV are copied
 **byte-for-byte** into the exported chain — no normalization, gain staging, dithering or
-compression anywhere in the path. Conversion happens only for formats the Octatrack cannot load
-(other sample rates, mono, 32-bit float), and is a straight format conversion.
+compression anywhere in the path. Conversion happens only for what the Octatrack cannot load
+(other sample rates, mono, 32-bit float, AIFF, FLAC), and is a straight format conversion. A
+16-bit source stays 16-bit rather than being padded to 24.
+
+Sample-rate conversion uses a Kaiser-windowed sinc kernel, not polynomial interpolation. That
+matters when *downsampling* — the everyday 48 → 44.1 kHz case — because interpolation on its own
+does nothing about content above the new Nyquist, so it folds back into the top of the band as an
+audible artefact. Measured on the current kernel: flat to 18 kHz, −0.2 dB at 19 kHz, and a 23 kHz
+tone that would otherwise mirror down to 21 kHz comes out **87 dB down**. Every output sample is
+normalized by its own tap-weight sum, which pins DC gain at exactly 1.0.
 
 Every gain the device reads is unity, so the sample's ATTRIBUTES page shows **GAIN +0.0 dB**:
 `GAIN=48` on each Static slot and gain `48` (a `u16` at offset 43) in the `.ot` sidecar — 48 being
@@ -245,14 +272,17 @@ src/
 
   lib/                     pure core — no DOM, no React, fully tested
     constants.js             sample rate + tempo math
-    wav.js  midi.js          format parsing
+    pcm.js                   band-limited resampling + PCM packing
+    wav.js  aiff.js  midi.js format parsing
     analysis.js              per-measure peaks, silence trim, waveform data
     slices.js                slice building, manual trims, boundary splitting
     otFile.js  bankFile.js  markersFile.js  projectFile.js   device writers
+    readback.js              device-file readers + the export verifier
     zip.js  unzip.js  dnd.js  meters.js  demo.js
 
   audio/
     AudioEngine.js           Web Audio graph + scheduling, in samples only
+    decodeFlac.js            FLAC via the browser decoder, at the file's own rate
     visualizers.js           canvas drawing for meters, scopes, spectrum
 
   waveform/WaveformCache.js  bar-anchored waveform cache
@@ -262,8 +292,8 @@ src/
 
   state/                    one hook per concern
     usePrefs  useThemeColors  useAnimationFrame
-    useStems  useMixer  useAnalysis  useSliceEdits
-    useTransport  usePlayhead  useTimelineView  useTimelineGestures
+    useStems  useMixer  useAnalysis  useSliceEdits  useHistory
+    useTransport  usePlayhead  useTimelineView  useTimelineGestures  useTimelineKeys
     useFileDrop  useProjectFolder  useDragResize  useExports
 
   components/
@@ -272,7 +302,7 @@ src/
     timeline/  Transport, Overview, Ruler, RegionHeader, TrackRail, Lane,
                SliceBlock, Playhead, SelectionBar, PatternTable
     ui/        EditableLabel, Field, LevelMeter, Oscilloscope, DropZone,
-               DropOverlay, Notices
+               DropOverlay, Notices, ShortcutsPanel
 
   styles/                  design tokens, themes, app styles
 
@@ -290,6 +320,10 @@ Two decisions worth knowing when reading it:
 - **The engine is told, not asked.** `AudioEngine` takes a program (which slices
   each track plays) and re-cues itself in place when that program changes, which
   is what makes an edit audible the moment you make it.
+- **Undo is a stack of inverse commands, not snapshots.** Clip edits, names and
+  the threshold each live in their own state, and `useHistory` records how to
+  reverse a change — which is what lets one ⌘Z span all of them without hoisting
+  everything into a single store.
 
 ---
 
@@ -303,7 +337,10 @@ importantly the trig-mask byte order (the published note is wrong for pages 2–
 the slice p-lock stores a 0–127 `STRT` knob value at two ticks per slice.
 
 Verified against **Octatrack OS 1.40** (bank data version 23, markers version 4) only. The writers
-refuse to touch files whose structure doesn't match. Keep a backup of your CF card and check the
-first generated project on the device before trusting it with a gig.
+refuse to touch files whose structure doesn't match, and every generated project is read back and
+diffed against its own pattern table before you download it. That catches a writer doing something
+other than what was asked; it cannot catch OSSC and the device disagreeing about what a byte means.
+Keep a backup of your CF card and check the first generated project on the device before trusting
+it with a gig.
 
 Not affiliated with Elektron. Octatrack is a trademark of Elektron Music Machines.

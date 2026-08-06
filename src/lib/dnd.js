@@ -22,7 +22,7 @@ export async function filesFromDataTransfer(dtOrCapture) {
   return out;
 }
 
-export const STEM_RE = /\.(wav|mid|midi|zip)$/i;
+export const STEM_RE = /\.(wav|aiff?|flac|mid|midi|zip)$/i;
 export const isStemDrop = items => items.filter(i => STEM_RE.test(i.path) && !i.path.split('/').pop().startsWith('.') && !i.path.includes('__MACOSX'));
 
 function walkEntry(entry, prefix, out) {

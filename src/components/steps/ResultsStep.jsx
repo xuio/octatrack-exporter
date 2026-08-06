@@ -1,24 +1,28 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import Transport from '../timeline/Transport.jsx';
 import Timeline from '../timeline/Timeline.jsx';
 import PatternTable from '../timeline/PatternTable.jsx';
 import SelectionBar from '../timeline/SelectionBar.jsx';
+import ShortcutsPanel from '../ui/ShortcutsPanel.jsx';
 import { useTimelineView } from '../../state/useTimelineView.js';
 import { usePlayhead, useViewportIndicator, useTimelineRefs } from '../../state/usePlayhead.js';
 import { useTimelineGestures } from '../../state/useTimelineGestures.js';
+import { useTimelineKeys } from '../../state/useTimelineKeys.js';
 import { useThemeColors } from '../../state/useThemeColors.js';
 import { isAudible } from '../../state/useStems.js';
 import { bucketsPerBarFor, trimLimits } from '../../lib/index.js';
 
 /** The arrangement editor: transport, timeline (or pattern table) and selection. */
 export default function ResultsStep({
-  base, stems, mixer, tracks, warnings, edits, transport, prefs, setPrefs, waveforms,
+  base, stems, mixer, tracks, warnings, edits, history, transport, prefs, setPrefs, waveforms,
   onRenameStem, onRenameRegion, onMute, onSolo, onExport, onExportCsv, onPrint, onResize,
 }) {
   const [view, setView] = useState('timeline');
   const [showWarnings, setShowWarnings] = useState(false);
+  const [showKeys, setShowKeys] = useState(false);
   const [selected, setSelected] = useState(null);        // { stemId, regionIdx }
   const [thresholdDraft, setThresholdDraft] = useState(null);
+  const thresholdBeforeDrag = useRef(null);
 
   const colors = useThemeColors(prefs.theme);
   const setFollow = useCallback(v => setPrefs({ follow: v }), [setPrefs]);
@@ -46,13 +50,26 @@ export default function ResultsStep({
   }, [selected, stems, tracks]);
 
   const deleteSelected = useCallback(() => {
-    if (selection) edits.setRegionEdit(selection.stem.id, selection.region.idx, { del: true, a: null, b: null });
+    if (selection) edits.setRegionEdit(selection.stem.id, selection.region.idx, { del: true, a: null, b: null }, 'delete clip');
   }, [selection, edits]);
 
-  const applyThreshold = useCallback((value) => {
+  const restoreSelected = useCallback(() => {
+    if (selection) edits.setRegionEdit(selection.stem.id, selection.region.idx, { del: null, a: null, b: null }, 'restore clip');
+  }, [selection, edits]);
+
+  /**
+   * `record` marks the end of a gesture: the slider records once on release
+   * rather than on every pixel, so one drag is one undo step.
+   */
+  const applyThreshold = useCallback((value, { record = false, from } = {}) => {
     if (!Number.isFinite(value)) return;
-    setPrefs({ threshold: Math.max(-120, Math.min(0, Math.round(value))) });
-  }, [setPrefs]);
+    const next = Math.max(-120, Math.min(0, Math.round(value)));
+    const before = from ?? prefs.threshold;
+    setPrefs({ threshold: next });
+    if (record && next !== before) {
+      history.record('threshold', () => setPrefs({ threshold: before }), () => setPrefs({ threshold: next }));
+    }
+  }, [setPrefs, prefs.threshold, history]);
 
   const nudge = useCallback((side, delta) => {
     if (!selection) return;
@@ -67,18 +84,35 @@ export default function ResultsStep({
     });
   }, [selection, tracks, base, edits]);
 
-  useEffect(() => {
-    const onKey = (e) => {
-      if (/INPUT|TEXTAREA/.test(e.target.tagName)) return;
-      const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? edits.redo() : edits.undo(); }
-      else if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); edits.redo(); }
-      else if (e.code === 'Space') { e.preventDefault(); transport.toggle(); }
-      else if ((e.key === 'Delete' || e.key === 'Backspace') && selected) { e.preventDefault(); deleteSelected(); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [edits, transport, selected, deleteSelected]);
+  const toStart = useCallback(() => {
+    transport.stop();
+    transport.setStartBar(1);
+    if (timeline.scrollerRef.current) timeline.scrollerRef.current.scrollLeft = 0;
+  }, [transport, timeline.scrollerRef]);
+
+  const reveal = useCallback(
+    (slice) => timeline.revealRange(slice.aM * timeline.ppm, (slice.bM + 1) * timeline.ppm),
+    [timeline],
+  );
+
+  useTimelineKeys({
+    enabled: view === 'timeline',
+    stems, tracks, selection, setSelected, history, transport,
+    onNudge: nudge,
+    onDelete: deleteSelected,
+    onRestore: restoreSelected,
+    onAudition: () => selection && transport.audition(selection.stem.id, selection.slice),
+    onLoop: () => selection && transport.loopRegion(selection.region),
+    onMute: () => selection && onMute(selection.stem.id),
+    onSolo: additive => selection && onSolo(selection.stem.id, additive),
+    onToStart: toStart,
+    onZoomIn: () => timeline.zoomAt(null, 1.4),
+    onZoomOut: () => timeline.zoomAt(null, 1 / 1.4),
+    onZoomFit: () => timeline.zoomToFit(base.total),
+    onToggleFollow: () => setFollow(!prefs.follow),
+    onToggleHelp: () => setShowKeys(v => !v),
+    onReveal: reveal,
+  });
 
   const loopRegion = base.regs.find(r => r.idx === transport.loopRegionIdx);
   const mixed = stems.map(s => ({ ...s, ...(mixer[s.id] || {}) }));
@@ -91,6 +125,7 @@ export default function ResultsStep({
         positionLabel={`${String(transport.startBar).padStart(3, '0')}.1`}
         follow={prefs.follow}
         edits={edits}
+        history={history}
         warnings={warnings}
         view={view}
         waveStyle={prefs.waveStyle}
@@ -100,20 +135,23 @@ export default function ResultsStep({
         thresholdDraft={thresholdDraft}
         masterAnalyser={transport.engine.masterAnalyser}
         colors={colors}
+        showKeys={showKeys}
         active
         loopLabel={loopRegion && `${String(loopRegion.idx).padStart(2, '0')}${loopRegion.name ? ` ${loopRegion.name.toUpperCase()}` : ''} (${loopRegion.bp})`}
         onPlay={() => transport.play()}
         onStop={transport.stop}
-        onToStart={() => { transport.stop(); transport.setStartBar(1); if (timeline.scrollerRef.current) timeline.scrollerRef.current.scrollLeft = 0; }}
+        onToStart={toStart}
         onToggleFollow={() => setFollow(!prefs.follow)}
-        onUndo={edits.undo}
-        onRedo={edits.redo}
+        onUndo={history.undo}
+        onRedo={history.redo}
         onClearLoop={transport.releaseLoop}
         onVolume={e => setPrefs({ volume: parseFloat(e.target.value) })}
+        onThresholdGrab={() => { thresholdBeforeDrag.current = prefs.threshold; }}
         onThresholdSlide={e => { setThresholdDraft(null); applyThreshold(parseFloat(e.target.value)); }}
+        onThresholdRelease={e => applyThreshold(parseFloat(e.target.value), { record: true, from: thresholdBeforeDrag.current })}
         onThresholdDraft={e => { setThresholdDraft(e.target.value); applyThreshold(parseFloat(e.target.value)); }}
-        onThresholdCommit={e => { setThresholdDraft(null); applyThreshold(parseFloat(e.target.value)); }}
-        onThresholdStep={delta => { setThresholdDraft(null); applyThreshold(prefs.threshold + delta); }}
+        onThresholdCommit={e => { setThresholdDraft(null); applyThreshold(parseFloat(e.target.value), { record: true }); }}
+        onThresholdStep={delta => { setThresholdDraft(null); applyThreshold(prefs.threshold + delta, { record: true }); }}
         onZoomIn={() => timeline.zoomAt(null, 1.4)}
         onZoomOut={() => timeline.zoomAt(null, 1 / 1.4)}
         onZoomFit={() => timeline.zoomToFit(base.total)}
@@ -122,8 +160,11 @@ export default function ResultsStep({
         onView={setView}
         onResetEdits={edits.reset}
         onToggleWarnings={() => setShowWarnings(v => !v)}
+        onToggleKeys={() => setShowKeys(v => !v)}
         onExport={onExport}
       />
+
+      {showKeys && <ShortcutsPanel onClose={() => setShowKeys(false)} />}
 
       {showWarnings && warnings.length > 0 && (
         <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--color-divider)', display: 'flex', flexDirection: 'column', gap: 3, background: 'color-mix(in srgb, var(--color-surface) 55%, transparent)' }}>
@@ -167,7 +208,7 @@ export default function ResultsStep({
             onAudition={(stemId, slice) => transport.audition(stemId, slice)}
             onTrimStart={gestures.startTrim}
             onRestore={(stemId, region) => {
-              edits.setRegionEdit(stemId, region.idx, { del: null, a: region.start, b: region.end - 1 });
+              edits.setRegionEdit(stemId, region.idx, { del: null, a: region.start, b: region.end - 1 }, 'add clip');
               setSelected({ stemId, regionIdx: region.idx });
             }}
             onRenameStem={onRenameStem}
@@ -184,7 +225,7 @@ export default function ResultsStep({
             selection={selection}
             onNudge={nudge}
             onAudition={() => selection && transport.audition(selection.stem.id, selection.slice)}
-            onResetTrim={() => selection && edits.setRegionEdit(selection.stem.id, selection.region.idx, { del: null, a: null, b: null })}
+            onResetTrim={restoreSelected}
             onDelete={deleteSelected}
           />
         </>

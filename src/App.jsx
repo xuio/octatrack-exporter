@@ -9,8 +9,9 @@ import ProjectStep from './components/steps/ProjectStep.jsx';
 import DropOverlay from './components/ui/DropOverlay.jsx';
 
 import { usePrefs } from './state/usePrefs.js';
-import { useStems, validateStems } from './state/useStems.js';
+import { useStems, validateStems, normalizeStemName } from './state/useStems.js';
 import { useRegions, useAnalysisBase, useTracks } from './state/useAnalysis.js';
+import { useHistory } from './state/useHistory.js';
 import { useSliceEdits } from './state/useSliceEdits.js';
 import { useTransport } from './state/useTransport.js';
 import { useMixer } from './state/useMixer.js';
@@ -47,13 +48,39 @@ export default function App() {
   const [regionNameHints, setRegionNameHints] = useState(null);
   const regions = useRegions({ midi, bpm, nameHints: regionNameHints ?? stemsApi.demoNames.current });
   const analysis = useAnalysisBase();
-  const edits = useSliceEdits();
+  const history = useHistory();
+  const edits = useSliceEdits(history);
   const { tracks, warnings } = useTracks({ base: analysis.base, stems, threshold: prefs.threshold, edits: edits.edits });
   const transport = useTransport({ stems, mixer: mixer.state, tracks, base: analysis.base, volume: prefs.volume ?? 0.85 });
   const projectFolder = useProjectFolder();
   const resize = useDragResize(setPrefs);
 
   const session = useSession({ stems, midi, bpm, abbrev, regions: regions.regions, edits: edits.edits });
+
+  // Renames go on the same undo stack as clip edits. Both live in state this
+  // component does not own, which is why history records how to reverse them
+  // rather than snapshotting a document.
+  const renameStem = useCallback((id, name) => {
+    const before = stems.find(s => s.id === id)?.name;
+    const after = normalizeStemName(name);
+    stemsApi.rename(id, after);
+    if (before !== undefined && before !== after) {
+      history.record('rename track', () => stemsApi.rename(id, before), () => stemsApi.rename(id, after));
+    }
+  }, [stems, stemsApi, history]);
+
+  const setRegionName = useCallback((idx, name) => {
+    regions.rename(idx, name);
+    analysis.renameRegion(idx, name);
+  }, [regions, analysis]);
+
+  const renameRegion = useCallback((idx, name) => {
+    const before = (analysis.base?.regs || regions.regions || []).find(r => r.idx === idx)?.name ?? '';
+    setRegionName(idx, name);
+    if (before !== name) {
+      history.record('rename section', () => setRegionName(idx, before), () => setRegionName(idx, name));
+    }
+  }, [analysis.base, regions.regions, setRegionName, history]);
 
   /** Put back the tempo, names and slice edits saved for exactly these files. */
   const restoreSession = useCallback(() => {
@@ -73,13 +100,14 @@ export default function App() {
     regions.reset();
     analysis.reset();
     edits.clearAll();
+    history.clear();
     mixer.clear();
     projectFolder.clear();
     session.clear();
     setRegionNameHints(null);
     setBpm(''); setBpmSource(''); setAbbrev(''); setZipName(''); setProjectName('');
     setStep('files');
-  }, [transport, stemsApi, regions, analysis, edits, mixer, projectFolder, session]);
+  }, [transport, stemsApi, regions, analysis, edits, history, mixer, projectFolder, session]);
 
   // Loading a different set of stems invalidates everything derived from the
   // old one. Keyed on the ids rather than the array so renaming or reordering
@@ -89,6 +117,7 @@ export default function App() {
     regions.reset();
     analysis.reset();
     edits.clearAll();
+    history.clear();
     setStep(current => (current === 'files' ? current : 'files'));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stemSetKey]);
@@ -99,7 +128,7 @@ export default function App() {
     if (dropTarget === 'project') { projectFolder.load(items); return; }
     const usable = isStemDrop(items);
     if (!usable.length) {
-      stemsApi.setError('Nothing usable in that drop — need .wav, .mid or a .zip/folder containing them.');
+      stemsApi.setError('Nothing usable in that drop — need .wav/.aif/.flac stems, a .mid, or a .zip/folder containing them.');
       return;
     }
     stemsApi.addFiles(usable.map(i => i.file).filter(Boolean));
@@ -229,12 +258,13 @@ export default function App() {
           tracks={tracks}
           warnings={warnings}
           edits={edits}
+          history={history}
           transport={transport}
           prefs={prefs}
           setPrefs={setPrefs}
           waveforms={waveforms}
-          onRenameStem={stemsApi.rename}
-          onRenameRegion={(idx, name) => { regions.rename(idx, name); analysis.renameRegion(idx, name); }}
+          onRenameStem={renameStem}
+          onRenameRegion={renameRegion}
           onMute={mixer.toggleMute}
           onSolo={mixer.toggleSolo}
           onResize={resize.start}

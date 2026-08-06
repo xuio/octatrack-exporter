@@ -1,86 +1,70 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { splitTrim } from '../lib/index.js';
-
-const LIMIT = 200;
 
 /**
  * Manual slice edits, keyed by stem and section so they survive threshold
- * changes and re-analysis, with undo/redo on top.
+ * changes and re-analysis:
  *
  *   edits[stemId][regionIdx] = { del: true } | { a: bar, b: bar }
  *
- * Edits and history live in one state object so every transition is a single
- * pure update — nesting setState calls inside updaters made redo unreliable.
+ * Undo lives in the shared history (see useHistory) so a clip edit, a rename
+ * and a threshold change all sit on one stack. Every transition computes the
+ * next value outside the state updater — recording history from inside one runs
+ * twice under StrictMode and corrupts the stack.
  */
-export function useSliceEdits() {
-  const [state, setState] = useState({ edits: {}, past: [], future: [] });
+export function useSliceEdits(history) {
+  const [edits, setEdits] = useState({});
+  const ref = useRef(edits);
 
-  /** Replace the edits, optionally pushing the previous value onto the undo stack. */
-  const apply = useCallback((produce, record = true) => {
-    setState(prev => {
-      const next = produce(prev.edits);
-      if (next === prev.edits) return prev;
-      return record
-        ? { edits: next, past: [...prev.past, prev.edits].slice(-LIMIT), future: [] }
-        : { ...prev, edits: next };
-    });
-  }, []);
+  const set = useCallback((value) => { ref.current = value; setEdits(value); }, []);
 
-  const setRegionEdit = useCallback((stemId, regionIdx, patch, record = true) => {
-    apply((edits) => {
-      const forStem = { ...(edits[stemId] || {}) };
-      const merged = { ...(forStem[regionIdx] || {}), ...patch };
-      if (merged.del == null && merged.a == null) delete forStem[regionIdx];
-      else forStem[regionIdx] = merged;
-      return { ...edits, [stemId]: forStem };
-    }, record);
-  }, [apply]);
+  /**
+   * Move to `next`. `label` records an undo step (omit it for the intermediate
+   * states of a drag); `from` overrides what undo goes back to, which is how a
+   * whole drag collapses into one step that returns to where it started.
+   */
+  const commit = useCallback((next, label, from) => {
+    const previous = from ?? ref.current;
+    if (next === ref.current) return;
+    set(next);
+    if (label) history.record(label, () => set(previous), () => set(next));
+  }, [history, set]);
+
+  const setRegionEdit = useCallback((stemId, regionIdx, patch, label = 'clip edit') => {
+    const current = ref.current;
+    const forStem = { ...(current[stemId] || {}) };
+    const merged = { ...(forStem[regionIdx] || {}), ...patch };
+    if (merged.del == null && merged.a == null) delete forStem[regionIdx];
+    else forStem[regionIdx] = merged;
+    commit({ ...current, [stemId]: forStem }, label);
+  }, [commit]);
 
   /**
    * Apply a dragged span, splitting it across every section it reaches — the
    * overhang becomes that section's own clip. `base`/`baseEdits` pin the drag to
-   * the layout it started from, so dragging out and back does not accumulate.
+   * the layout it started from, so dragging out and back does not accumulate,
+   * and they double as the point undo returns to.
    */
   const trim = useCallback((stemId, regionIdx, a, b, { regions, base, baseEdits, record = true }) => {
+    const source = baseEdits || ref.current;
     const patch = splitTrim(regions, regionIdx, a, b, base);
-    apply((edits) => {
-      const source = baseEdits || edits;
-      const forStem = { ...(source[stemId] || {}) };
-      for (const [idx, span] of Object.entries(patch)) {
-        if (span === null) delete forStem[idx];
-        else forStem[idx] = { a: span.a, b: span.b };
-      }
-      return { ...source, [stemId]: forStem };
-    }, record);
-  }, [apply]);
-
-  const undo = useCallback(() => setState(prev => (prev.past.length ? {
-    edits: prev.past[prev.past.length - 1],
-    past: prev.past.slice(0, -1),
-    future: [prev.edits, ...prev.future].slice(0, LIMIT),
-  } : prev)), []);
-
-  const redo = useCallback(() => setState(prev => (prev.future.length ? {
-    edits: prev.future[0],
-    past: [...prev.past, prev.edits].slice(-LIMIT),
-    future: prev.future.slice(1),
-  } : prev)), []);
+    const forStem = { ...(source[stemId] || {}) };
+    for (const [idx, span] of Object.entries(patch)) {
+      if (span === null) delete forStem[idx];
+      else forStem[idx] = { a: span.a, b: span.b };
+    }
+    commit({ ...source, [stemId]: forStem }, record ? 'trim clip' : null, source);
+  }, [commit]);
 
   /** Swap in a whole edit set (restoring a session) as one undoable step. */
-  const replace = useCallback((next) => apply(() => next, true), [apply]);
-
-  const reset = useCallback(() => apply(() => ({}), true), [apply]);
-  const clearAll = useCallback(() => setState({ edits: {}, past: [], future: [] }), []);
+  const replace = useCallback((next) => commit(next, 'restore session'), [commit]);
+  const reset = useCallback(() => commit({}, 'discard clip edits'), [commit]);
+  const clearAll = useCallback(() => set({}), [set]);
 
   const count = useMemo(
-    () => Object.values(state.edits).reduce((n, forStem) => n + Object.keys(forStem).length, 0),
-    [state.edits],
+    () => Object.values(edits).reduce((n, forStem) => n + Object.keys(forStem).length, 0),
+    [edits],
   );
 
-  return {
-    edits: state.edits,
-    canUndo: state.past.length > 0,
-    canRedo: state.future.length > 0,
-    count, trim, setRegionEdit, undo, redo, reset, replace, clearAll,
-  };
+  return { edits, count, trim, setRegionEdit, reset, replace, clearAll };
 }
