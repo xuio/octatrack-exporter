@@ -13,8 +13,8 @@ const gridImage = ppm =>
 export default function Timeline({
   base, stems, mixer, tracks, ppm, viewport, view, selection, waveStyle, scopeMode,
   railWidth, laneHeight, colors, analyserFor, active, buckets, pathsFor, refs,
-  onScrubTimeline, onScrubOverview, onLoopDrag, onSelect, onDeselect, onAudition, onTrimStart, onRestore,
-  onRenameStem, onRenameRegion, onMute, onSolo, onLoopRegion, onResizeRail, onResizeLane, onScroll, onWheel,
+  onScrubTimeline, onScrubOverview, onZoomSection, onLoopDrag, onSelect, onDeselect, onAudition, onTrimStart, onRestore,
+  onRenameStem, onRenameRegion, onMute, onSolo, onReorderStem, onLoopRegion, onResizeRail, onResizeLane, onScroll, onWheel,
 }) {
   const width = Math.ceil(base.total * ppm) + 2;
   const grid = gridImage(ppm);
@@ -41,6 +41,7 @@ export default function Timeline({
         playheadRef={refs.overviewPlayhead}
         viewportRef={refs.overviewViewport}
         onScrub={onScrubOverview}
+        onZoomSection={onZoomSection}
       />
 
       <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `${railWidth}px 1fr`, minHeight: 0 }}>
@@ -56,6 +57,7 @@ export default function Timeline({
           onRename={onRenameStem}
           onMute={onMute}
           onSolo={onSolo}
+          onReorder={onReorderStem}
           onResizeWidth={onResizeRail}
           onResizeHeight={onResizeLane}
         />

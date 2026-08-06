@@ -46,6 +46,17 @@
  */
 
 /**
+ * A clip's sample-accurate edge offsets, and the room they have to move in.
+ * @typedef {object} FineTrim
+ * @property {number} sa       start offset from `barStart`, after clamping
+ * @property {number} sb       end offset from `barEnd`, after clamping
+ * @property {number} barStart the bar-quantized start this offsets from
+ * @property {number} barEnd
+ * @property {number} min      first sample of the section — the edges' floor
+ * @property {number} max      one past its last sample — their ceiling
+ */
+
+/**
  * One clip: a span of bars in a section, and where it lands in the chain.
  * @typedef {object} Slice
  * @property {Region} region     the section it belongs to
@@ -61,6 +72,7 @@
  * @property {Region} trigRegion the pattern that trigs it (always `region`)
  * @property {number} trigRegionIdx
  * @property {boolean} edited    true when a manual trim produced it
+ * @property {FineTrim} fine     sample-accurate edge offsets on top of the bars
  */
 
 /**

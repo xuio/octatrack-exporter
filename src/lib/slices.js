@@ -3,10 +3,15 @@
 // threshold changes and re-analysis.
 //
 // edits[regionIdx] = { del: true }            — slice removed
-//                  | { a: bar, b: bar }       — manual trim (absolute bar indices)
+//                  | { a: bar, b: bar,        — manual trim (absolute bar indices)
+//                      sa, sb }               — fine trim, signed sample offsets
 //
 // Trims are bar-quantized on purpose: a slice must start on a bar for the trig
-// step math (and the Octatrack's step grid) to line up.
+// step math (and the Octatrack's step grid) to line up. `sa`/`sb` then move the
+// two edges off that bar line by a handful of samples — enough to land the cut
+// on a zero crossing so the device does not click, far too little to shift which
+// step the trig fires on. They are offsets from the bar-derived edges, so bar
+// trims and fine trims compose without either having to know about the other.
 //
 // A slice always lives entirely inside its own section — one slice per section,
 // exactly as the initial import produces, and one trig per pattern. Dragging an
@@ -15,6 +20,29 @@
 // splitTrim), so expanding a clip creates a separate clip next door.
 import { trimRegion } from './analysis.js';
 import { trigStep } from './midi.js';
+
+/**
+ * Where a fine trim may put a slice's edges, and where its bars put them now.
+ * A slice owns its whole section and never shares it, so the section's own
+ * sample range is the only limit an edge can run into.
+ *
+ * @returns {{barStart: number, barEnd: number, min: number, max: number}}
+ */
+export function fineRange(region, aM, bM, bounds) {
+  return { barStart: bounds[aM], barEnd: bounds[bM + 1], min: bounds[region.start], max: bounds[region.end] };
+}
+
+/**
+ * Clamp a pair of sample offsets to that range, keeping start < end. Returns the
+ * offsets that actually apply, so the UI shows what the export will contain
+ * rather than what was asked for.
+ */
+export function clampFine(range, sa = 0, sb = 0) {
+  const { barStart, barEnd, min, max } = range;
+  const start = Math.max(min, Math.min(max - 1, barStart + (sa || 0)));
+  const end = Math.max(start + 1, Math.min(max, barEnd + (sb || 0)));
+  return { sa: start - barStart, sb: end - barEnd, start, end };
+}
 
 export function buildStemSlices(peaks, regs, bounds, thLin, edits = {}) {
   if (!regs.length) return { slices: [], ghosts: [], totalFrames: 0 };
@@ -31,14 +59,16 @@ export function buildStemSlices(peaks, regs, bounds, thLin, edits = {}) {
     }
     aM = Math.max(r.start, Math.min(r.end - 1, aM));
     bM = Math.max(aM, Math.min(r.end - 1, bM));
-    slices.push({ region: r, aM, bM, edited });
+    const range = fineRange(r, aM, bM, bounds);
+    const { sa, sb, start, end } = clampFine(range, e?.sa, e?.sb);
+    slices.push({ region: r, aM, bM, edited: edited || !!(sa || sb), fine: { ...range, sa, sb }, start, end });
   }
   // sections never overlap, so neither can their slices
   slices.sort((x, y) => x.aM - y.aM);
 
   let out = 0;
   const placed = slices.map((slice, i) => {
-    const start = bounds[slice.aM], end = bounds[slice.bM + 1], frames = end - start;
+    const frames = slice.end - slice.start;
     const outStart = out;
     out += frames;
     return {
@@ -48,8 +78,6 @@ export function buildStemSlices(peaks, regs, bounds, thLin, edits = {}) {
       trigRegionIdx: slice.region.idx,
       movedTrig: false,
       trig: trigStep(slice.aM - slice.region.start, slice.region.scale.steps),
-      start,
-      end,
       frames,
       num: i + 1,
       outStart,

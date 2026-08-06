@@ -55,7 +55,25 @@ export default function App() {
   const projectFolder = useProjectFolder();
   const resize = useDragResize(setPrefs);
 
-  const session = useSession({ stems, midi, bpm, abbrev, regions: regions.regions, edits: edits.edits });
+  // The bits of the editor's view the session remembers. Zoom, scroll and the
+  // selection live inside the results step, which reports them up here; the
+  // loop and the start bar are the transport's, which App already owns.
+  const [editorView, setEditorView] = useState(null);
+  const [pendingView, setPendingView] = useState(null);
+  const sessionView = useMemo(() => (editorView ? {
+    ppm: editorView.ppm,
+    scrollX: editorView.scrollX,
+    // By index, never by id — ids are per-load counters (see useSession).
+    selected: editorView.selected
+      ? { stemIndex: stems.findIndex(s => s.id === editorView.selected.stemId), regionIdx: editorView.selected.regionIdx }
+      : null,
+    loop: transport.loopRegionIdx != null ? { regionIdx: transport.loopRegionIdx } : transport.loopBars,
+    startBar: transport.startBar,
+  } : null), [editorView, stems, transport.loopRegionIdx, transport.loopBars, transport.startBar]);
+
+  const session = useSession({
+    stems, midi, bpm, abbrev, regions: regions.regions, edits: edits.edits, view: sessionView,
+  });
 
   // Renames go on the same undo stack as clip edits. Both live in state this
   // component does not own, which is why history records how to reverse them
@@ -68,6 +86,17 @@ export default function App() {
       history.record('rename track', () => stemsApi.rename(id, before), () => stemsApi.rename(id, after));
     }
   }, [stems, stemsApi, history]);
+
+  /**
+   * Dragging a track to another slot. Only the array order changes — that is
+   * read at export time for the Octatrack slot numbers, and nothing derived
+   * from the stems is order-sensitive, so the analysis and the edits stay put.
+   */
+  const reorderStems = useCallback((from, to) => {
+    if (from === to) return;
+    stemsApi.reorder(from, to);
+    history.record('reorder tracks', () => stemsApi.reorder(to, from), () => stemsApi.reorder(from, to));
+  }, [stemsApi, history]);
 
   const setRegionName = useCallback((idx, name) => {
     regions.rename(idx, name);
@@ -90,6 +119,9 @@ export default function App() {
     if (snapshot.abbrev) setAbbrev(snapshot.abbrev);
     snapshot.names.forEach((name, i) => { if (name && stems[i]) stemsApi.rename(stems[i].id, name); });
     if (snapshot.regionNames) setRegionNameHints(snapshot.regionNames);
+    // Parked rather than applied: zoom, scroll and the selection only exist
+    // once the analysis does, so the results step puts them back when it mounts.
+    setPendingView(snapshot.view);
     edits.replace(snapshot.edits);
   }, [session, stems, stemsApi, edits]);
 
@@ -105,14 +137,17 @@ export default function App() {
     projectFolder.clear();
     session.clear();
     setRegionNameHints(null);
+    setEditorView(null); setPendingView(null);
     setBpm(''); setBpmSource(''); setAbbrev(''); setZipName(''); setProjectName('');
     setStep('files');
   }, [transport, stemsApi, regions, analysis, edits, history, mixer, projectFolder, session]);
 
   // Loading a different set of stems invalidates everything derived from the
-  // old one. Keyed on the ids rather than the array so renaming or reordering
-  // — which the analysis survives — does not throw it away.
-  const stemSetKey = stems.map(s => s.id).join(',');
+  // old one. Keyed on the *set* of ids — sorted, not in array order — so that
+  // renaming or reordering, both of which the analysis survives, does not throw
+  // it away. (Joining them in array order made a rail drag look like a new
+  // stem set and silently reset the analysis, edits, history and the step.)
+  const stemSetKey = stems.map(s => s.id).sort((a, b) => a - b).join(',');
   useEffect(() => {
     regions.reset();
     analysis.reset();
@@ -263,8 +298,12 @@ export default function App() {
           prefs={prefs}
           setPrefs={setPrefs}
           waveforms={waveforms}
+          pendingView={pendingView}
+          onViewState={setEditorView}
+          onViewRestored={() => setPendingView(null)}
           onRenameStem={renameStem}
           onRenameRegion={renameRegion}
+          onReorderStem={reorderStems}
           onMute={mixer.toggleMute}
           onSolo={mixer.toggleSolo}
           onResize={resize.start}

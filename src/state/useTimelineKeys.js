@@ -19,6 +19,9 @@ export const SHORTCUTS = [
   { keys: ['↑', '↓'], text: 'Select the clip in the track above / below' },
   { keys: ['⇧←', '⇧→'], text: 'Move the clip’s start one bar' },
   { keys: ['⌥←', '⌥→'], text: 'Move the clip’s end one bar' },
+  { keys: [',', '.'], text: 'Fine-trim the clip’s start 1 ms' },
+  { keys: ['<', '>'], text: 'Fine-trim the clip’s end 1 ms' },
+  { keys: ['Z'], text: 'Snap both edges to a zero crossing' },
   { keys: ['Enter'], text: 'Audition the selected clip' },
   { keys: ['⌫'], text: 'Delete the selected clip' },
   { keys: ['R'], text: 'Restore it to the full section' },
@@ -42,7 +45,7 @@ function nearestSlice(track, regionIdx) {
 
 export function useTimelineKeys({
   enabled, stems, tracks, selection, setSelected, history, transport,
-  onNudge, onDelete, onRestore, onAudition, onLoop, onMute, onSolo, onToStart,
+  onNudge, onFineNudge, onFineSnap, onDelete, onRestore, onAudition, onLoop, onMute, onSolo, onToStart,
   onZoomIn, onZoomOut, onZoomFit, onToggleFollow, onToggleHelp, onReveal,
 }) {
   /** Move the selection by `dStem` lanes and `dClip` clips. */
@@ -90,6 +93,12 @@ export function useTimelineKeys({
         case '+': case '=': take(); onZoomIn(); return;
         case '-': case '_': take(); onZoomOut(); return;
         case '0': take(); onZoomFit(); return;
+        // Fine trim sits on the comma/period pair: unshifted moves the start,
+        // shifted (< >) the end — one key row, no chords to remember.
+        case ',': if (selection) { take(); onFineNudge('l', -1); } return;
+        case '.': if (selection) { take(); onFineNudge('l', 1); } return;
+        case '<': if (selection) { take(); onFineNudge('r', -1); } return;
+        case '>': if (selection) { take(); onFineNudge('r', 1); } return;
         case 'ArrowLeft':
           take();
           if (e.shiftKey) onNudge('l', -1);
@@ -113,6 +122,7 @@ export function useTimelineKeys({
         case 'm': if (selection) { take(); onMute(); } break;
         case 's': if (selection) { take(); onSolo(e.shiftKey); } break;
         case 'r': if (selection) { take(); onRestore(); } break;
+        case 'z': if (selection) { take(); onFineSnap(); } break;
         default: break;
       }
     };
@@ -120,7 +130,7 @@ export function useTimelineKeys({
     return () => window.removeEventListener('keydown', onKey);
   }, [
     enabled, selection, history, transport, move, setSelected,
-    onNudge, onDelete, onRestore, onAudition, onLoop, onMute, onSolo, onToStart,
+    onNudge, onFineNudge, onFineSnap, onDelete, onRestore, onAudition, onLoop, onMute, onSolo, onToStart,
     onZoomIn, onZoomOut, onZoomFit, onToggleFollow, onToggleHelp, onReveal,
   ]);
 }

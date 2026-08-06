@@ -24,7 +24,7 @@ const read = () => {
   try { return JSON.parse(localStorage.getItem(KEY)) || null; } catch { return null; }
 };
 
-export function useSession({ stems, midi, bpm, abbrev, regions, edits }) {
+export function useSession({ stems, midi, bpm, abbrev, regions, edits, view }) {
   const [saved] = useState(read);          // whatever was on disk when the app started
   const [dismissed, setDismissed] = useState(false);
   const key = fingerprint(stems, midi);
@@ -39,9 +39,13 @@ export function useSession({ stems, midi, bpm, abbrev, regions, edits }) {
       names: stems.map(s => s.name),
       regionNames: regions ? regions.map(r => r.name || '') : null,
       editsByIndex: stems.map(s => edits[s.id] || {}),
+      // Where the user was looking — zoom, scroll, selection, loop, start bar.
+      // Optional by design: it is absent until the results step exists, and a
+      // snapshot written by an older build simply has no `view` at all.
+      view: view || null,
     };
     try { localStorage.setItem(KEY, JSON.stringify(snapshot)); } catch { /* quota or private mode */ }
-  }, [key, bpm, abbrev, stems, regions, edits]);
+  }, [key, bpm, abbrev, stems, regions, edits, view]);
 
   /** A saved session for exactly these files that has not been used or waved away. */
   const offer = (!dismissed && saved && key && saved.key === key && countEdits(saved.editsByIndex) > 0)
@@ -57,6 +61,7 @@ export function useSession({ stems, midi, bpm, abbrev, regions, edits }) {
       abbrev: saved.abbrev,
       names: saved.names || [],
       regionNames: saved.regionNames,
+      view: saved.view || null,
       edits: Object.fromEntries(stems.map((stem, i) => [stem.id, saved.editsByIndex?.[i] || {}])),
     };
   }, [saved, stems]);

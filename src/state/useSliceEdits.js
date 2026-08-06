@@ -5,7 +5,11 @@ import { splitTrim } from '../lib/index.js';
  * Manual slice edits, keyed by stem and section so they survive threshold
  * changes and re-analysis:
  *
- *   edits[stemId][regionIdx] = { del: true } | { a: bar, b: bar }
+ *   edits[stemId][regionIdx] = { del: true } | { a: bar, b: bar, sa, sb }
+ *
+ * `sa`/`sb` are signed sample offsets from the bar-derived edges (the fine
+ * trim); they are stored only when non-zero, which is what keeps sessions
+ * written before they existed loading unchanged.
  *
  * Undo lives in the shared history (see useHistory) so a clip edit, a rename
  * and a threshold change all sit on one stack. Every transition computes the
@@ -30,13 +34,25 @@ export function useSliceEdits(history) {
     if (label) history.record(label, () => set(previous), () => set(next));
   }, [history, set]);
 
-  const setRegionEdit = useCallback((stemId, regionIdx, patch, label = 'clip edit') => {
+  /**
+   * Merge a patch into one region's edit. Passing `label = null` skips the undo
+   * step (the live frames of a fine-trim drag), and `from` is the state that one
+   * drag's single recorded step goes back to.
+   */
+  const setRegionEdit = useCallback((stemId, regionIdx, patch, label = 'clip edit', from) => {
     const current = ref.current;
     const forStem = { ...(current[stemId] || {}) };
     const merged = { ...(forStem[regionIdx] || {}), ...patch };
-    if (merged.del == null && merged.a == null) delete forStem[regionIdx];
-    else forStem[regionIdx] = merged;
-    commit({ ...current, [stemId]: forStem }, label);
+    // Normalize on the way in: an edit that says nothing is no edit at all, and
+    // a zero offset must not linger as one — `count` and the ✎ marker read this.
+    const next = {};
+    if (merged.del) next.del = true;
+    if (merged.a != null) { next.a = merged.a; next.b = merged.b != null ? merged.b : merged.a; }
+    if (merged.sa) next.sa = merged.sa;
+    if (merged.sb) next.sb = merged.sb;
+    if (!Object.keys(next).length) delete forStem[regionIdx];
+    else forStem[regionIdx] = next;
+    commit({ ...current, [stemId]: forStem }, label, from);
   }, [commit]);
 
   /**
@@ -50,8 +66,11 @@ export function useSliceEdits(history) {
     const patch = splitTrim(regions, regionIdx, a, b, base);
     const forStem = { ...(source[stemId] || {}) };
     for (const [idx, span] of Object.entries(patch)) {
-      if (span === null) delete forStem[idx];
-      else forStem[idx] = { a: span.a, b: span.b };
+      if (span === null) { delete forStem[idx]; continue; }
+      // A fine trim is an offset from the bar edge, so it survives the bar edge
+      // moving — dragging a clip wider keeps the click-free cut it was given.
+      const { sa, sb } = forStem[idx] || {};
+      forStem[idx] = { a: span.a, b: span.b, ...(sa ? { sa } : {}), ...(sb ? { sb } : {}) };
     }
     commit({ ...source, [stemId]: forStem }, record ? 'trim clip' : null, source);
   }, [commit]);

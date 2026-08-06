@@ -1,10 +1,15 @@
+import { useState } from 'react';
+import FineTrim from './FineTrim.jsx';
+
 const Value = ({ children }) => <b style={{ color: 'var(--color-neutral-200)', fontWeight: 500 }}>{children}</b>;
 
 const HINT = 'Select a slice to trim or delete it — drag its edges to trim, double-click to audition. '
   + 'Dashed blocks add a slice back.';
 
 /** Footer describing the selected slice, with nudge / audition / delete actions. */
-export default function SelectionBar({ selection, onNudge, onAudition, onResetTrim, onDelete }) {
+export default function SelectionBar({ selection, onNudge, onAudition, onResetTrim, onDelete, onFine, onFineSnap }) {
+  const [fineOpen, setFineOpen] = useState(false);
+
   const bar = {
     display: 'flex', alignItems: 'center', gap: 12, padding: '7px 16px', minHeight: 34, flexWrap: 'wrap',
     borderTop: '1px solid var(--color-divider)', fontSize: 11, color: 'var(--color-neutral-400)',
@@ -15,6 +20,7 @@ export default function SelectionBar({ selection, onNudge, onAudition, onResetTr
   }
 
   const { stem, slice, region } = selection;
+  const fined = !!(slice.fine.sa || slice.fine.sb);
   return (
     <div style={bar}>
       <span className="tag tag-accent" style={{ fontSize: 10 }}>{stem.name} · Slice {slice.num}</span>
@@ -34,9 +40,19 @@ export default function SelectionBar({ selection, onNudge, onAudition, onResetTr
         <button className="tb" style={{ minWidth: 20, height: 20 }} onClick={() => onNudge('r', 1)} title="Extend end by one bar">+</button>
       </span>
 
+      <button
+        className="btn btn-ghost"
+        style={{ fontSize: 11, padding: '2px 6px', color: fined ? 'var(--color-accent-300)' : undefined }}
+        onClick={() => setFineOpen(v => !v)}
+        title="Move the slice points by samples, without touching the audio"
+      >
+        {fineOpen ? '▾' : '▸'} Fine trim{fined ? ' ✎' : ''}
+      </button>
       <button className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }} onClick={onAudition}>Audition</button>
       {slice.edited && <button className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }} onClick={onResetTrim}>Reset trim</button>}
       <button className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }} onClick={onDelete} title="Delete this slice (Del)">Delete</button>
+
+      {fineOpen && <FineTrim selection={selection} onFine={onFine} onFineSnap={onFineSnap} />}
     </div>
   );
 }

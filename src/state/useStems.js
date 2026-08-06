@@ -91,6 +91,19 @@ export function useStems({ onLoaded }) {
 
   const update = useCallback(fn => setStems(prev => fn(prev)), []);
 
+  /**
+   * Put the stem at `from` in slot `to`. A splice-move rather than a swap: the
+   * rail lets a row be dragged several slots at once, and the rows it passes
+   * have to shift by one each — a swap would scramble them. Its own inverse is
+   * `reorder(to, from)`, which is what the undo stack records.
+   */
+  const reorder = useCallback((from, to) => update(list => {
+    if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return list;
+    const next = [...list];
+    next.splice(to, 0, next.splice(from, 1)[0]);
+    return next;
+  }), [update]);
+
   const clear = useCallback(() => {
     setStems([]); setMidi(null); setError(''); setReading('');
     demoNames.current = null;
@@ -98,16 +111,11 @@ export function useStems({ onLoaded }) {
 
   return {
     stems, midi, error, reading, demoLoading, demoNames,
-    addFiles, loadDemo, setError, clear,
+    addFiles, loadDemo, setError, clear, reorder,
     removeMidi: () => setMidi(null),
     rename: (id, name) => update(list => list.map(s => s.id === id ? { ...s, name: normalizeStemName(name) } : s)),
     remove: (id) => update(list => list.filter(s => s.id !== id)),
-    move: (index, delta) => update(list => {
-      const next = [...list], to = index + delta;
-      if (to < 0 || to >= next.length) return list;
-      [next[index], next[to]] = [next[to], next[index]];
-      return next;
-    }),
+    move: (index, delta) => reorder(index, index + delta),
     toggleMute: (id) => update(list => list.map(s => s.id === id ? { ...s, muted: !s.muted } : s)),
     // A plain click solos one track; shift-click builds a solo group. Clearing
     // the last solo returns every unmuted track, as in any DAW.

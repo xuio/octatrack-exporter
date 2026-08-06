@@ -97,10 +97,12 @@ export function useAnalysisBase() {
  * is what keeps the timeline, the exports and the audio engine in step.
  */
 export function useTracks({ base, stems, threshold, edits }) {
-  // Keyed on the stem *ids*, not the array: a rename changes the array but not
-  // a single slice, and re-deriving would hand the audio engine a new program
-  // and make it re-cue mid-playback.
-  const stemIds = stems.map(s => s.id).join(',');
+  // Keyed on the *set* of stem ids, not the array: a rename changes the array
+  // but not a single slice, and dragging a track to another slot only changes
+  // its Octatrack slot number, which is read off the array at export time. Both
+  // would otherwise re-derive and hand the audio engine a new program, making
+  // it re-cue mid-playback. (The Map is built in `base.peaks` order either way.)
+  const stemIds = stems.map(s => s.id).sort((a, b) => a - b).join(',');
 
   const tracks = useMemo(() => {
     const built = new Map();

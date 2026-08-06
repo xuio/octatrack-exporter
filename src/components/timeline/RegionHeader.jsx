@@ -35,7 +35,9 @@ export default function RegionHeader({ regions, ppm, loopRegionIdx, selectedRegi
               />
             </div>
             <div className="mono" style={{ fontSize: 9.5, color: 'var(--color-neutral-500)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {region.bp} · {region.len} · {region.scale.label}
+              {/* The starting bar first: it is what the transport readout and
+                  the ruler are counting in, so it anchors the rest. */}
+              bar {region.start + 1} · {region.bp} · {region.len} · {region.scale.label}
             </div>
             <button
               className={`msb ${looping ? 'on' : ''}`}

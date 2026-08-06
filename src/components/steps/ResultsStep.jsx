@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Transport from '../timeline/Transport.jsx';
 import Timeline from '../timeline/Timeline.jsx';
 import PatternTable from '../timeline/PatternTable.jsx';
@@ -10,12 +10,13 @@ import { useTimelineGestures } from '../../state/useTimelineGestures.js';
 import { useTimelineKeys } from '../../state/useTimelineKeys.js';
 import { useThemeColors } from '../../state/useThemeColors.js';
 import { isAudible } from '../../state/useStems.js';
-import { bucketsPerBarFor, trimLimits, formatClock, patternReadout, rangeLabel, SR } from '../../lib/index.js';
+import { bucketsPerBarFor, trimLimits, clampFine, nearestZeroCrossing, formatClock, patternReadout, rangeLabel, restorableView, SR } from '../../lib/index.js';
 
 /** The arrangement editor: transport, timeline (or pattern table) and selection. */
 export default function ResultsStep({
   base, stems, mixer, tracks, warnings, edits, history, transport, prefs, setPrefs, waveforms,
-  onRenameStem, onRenameRegion, onMute, onSolo, onExport, onExportCsv, onPrint, onResize,
+  pendingView, onViewState, onViewRestored,
+  onRenameStem, onRenameRegion, onReorderStem, onMute, onSolo, onExport, onExportCsv, onPrint, onResize,
 }) {
   const [view, setView] = useState('timeline');
   const [showWarnings, setShowWarnings] = useState(false);
@@ -23,6 +24,7 @@ export default function ResultsStep({
   const [selected, setSelected] = useState(null);        // { stemId, regionIdx }
   const [thresholdDraft, setThresholdDraft] = useState(null);
   const thresholdBeforeDrag = useRef(null);
+  const fineFrom = useRef(/** @type {object|null} */(null));   // edits pinned at the start of a fine-trim drag
 
   const colors = useThemeColors(prefs.theme);
   const setFollow = useCallback(v => setPrefs({ follow: v }), [setPrefs]);
@@ -54,11 +56,11 @@ export default function ResultsStep({
   }, [selected, stems, tracks]);
 
   const deleteSelected = useCallback(() => {
-    if (selection) edits.setRegionEdit(selection.stem.id, selection.region.idx, { del: true, a: null, b: null }, 'delete clip');
+    if (selection) edits.setRegionEdit(selection.stem.id, selection.region.idx, { del: true, a: null, b: null, sa: null, sb: null }, 'delete clip');
   }, [selection, edits]);
 
   const restoreSelected = useCallback(() => {
-    if (selection) edits.setRegionEdit(selection.stem.id, selection.region.idx, { del: null, a: null, b: null }, 'restore clip');
+    if (selection) edits.setRegionEdit(selection.stem.id, selection.region.idx, { del: null, a: null, b: null, sa: null, sb: null }, 'restore clip');
   }, [selection, edits]);
 
   /**
@@ -88,6 +90,43 @@ export default function ResultsStep({
     });
   }, [selection, tracks, base, edits]);
 
+  /**
+   * Move the selected clip's edges by samples. `phase` is how a drag stays one
+   * undo step: the live frames record nothing and pin the state they started
+   * from, and the release records the whole move back to it.
+   */
+  const fineTrim = useCallback((patch, phase, label = 'fine trim') => {
+    if (!selection) return;
+    const { stem, slice, region } = selection;
+    const { sa, sb } = clampFine(slice.fine, patch.sa ?? slice.fine.sa, patch.sb ?? slice.fine.sb);
+    if (phase === 'live') {
+      if (!fineFrom.current) fineFrom.current = edits.edits;
+      edits.setRegionEdit(stem.id, region.idx, { sa, sb }, null);
+      return;
+    }
+    const from = fineFrom.current;
+    fineFrom.current = null;
+    edits.setRegionEdit(stem.id, region.idx, { sa, sb }, label, from ?? undefined);
+  }, [selection, edits]);
+
+  /** Put an edge (or both) on the nearest sample where the signal crosses zero. */
+  const fineSnap = useCallback((side) => {
+    if (!selection) return;
+    const { stem, slice } = selection;
+    const patch = {};
+    if (side !== 'r') patch.sa = nearestZeroCrossing(stem.chL, stem.chR, slice.start) - slice.fine.barStart;
+    if (side !== 'l') patch.sb = nearestZeroCrossing(stem.chL, stem.chR, slice.end) - slice.fine.barEnd;
+    fineTrim(patch, 'commit', 'snap to zero crossing');
+  }, [selection, fineTrim]);
+
+  /** Keyboard fine nudges work in milliseconds — samples are far too small to hold. */
+  const fineNudge = useCallback((side, ms) => {
+    if (!selection) return;
+    const { fine } = selection.slice;
+    const delta = Math.round(ms * SR / 1000);
+    fineTrim(side === 'l' ? { sa: fine.sa + delta } : { sb: fine.sb + delta }, 'commit');
+  }, [selection, fineTrim]);
+
   const toStart = useCallback(() => {
     transport.stop();
     transport.setStartBar(1);
@@ -99,10 +138,50 @@ export default function ResultsStep({
     [timeline],
   );
 
+  /** Double-click in the overview: frame whichever section was under the pointer. */
+  const zoomSection = useCallback((e) => {
+    const el = refs.overview.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const bar = ((e.clientX - rect.left) / rect.width) * base.total;
+    const region = base.regs.find(r => bar >= r.start && bar < r.end);
+    if (region) timeline.zoomToRange(region.start, region.end);
+  }, [refs, base, timeline]);
+
+  // Hand the view up so the session can save it alongside the names and edits.
+  // Zoom and selection change per gesture, and `viewport.scrollX` is already
+  // coalesced to jumps of more than 24px, so this is not a per-frame report.
+  useEffect(() => {
+    onViewState?.({ ppm: timeline.ppm, scrollX: timeline.viewport.scrollX, selected });
+  }, [onViewState, timeline.ppm, timeline.viewport.scrollX, selected]);
+
+  /**
+   * A restored session brings its view back. Zoom, scroll, selection and loop
+   * only mean anything once an analysis exists, so App parks them and this step
+   * applies them on the mount that follows — after checking they still point at
+   * a stem and a section that survived the re-analysis.
+   */
+  useEffect(() => {
+    if (!pendingView) return;
+    onViewRestored?.();
+    const view = restorableView(pendingView, {
+      stemCount: stems.length,
+      regionIdxs: base.regs.map(r => r.idx),
+      totalBars: base.total,
+    });
+    if (!view) return;
+    timeline.restoreView(view);
+    if (view.selected) setSelected({ stemId: stems[view.selected.stemIndex].id, regionIdx: view.selected.regionIdx });
+    if (view.loop) transport.restoreLoop(view.loop);
+    transport.setStartBar(view.startBar);
+  }, [pendingView, onViewRestored, stems, base, timeline, transport]);
+
   useTimelineKeys({
     enabled: view === 'timeline',
     stems, tracks, selection, setSelected, history, transport,
     onNudge: nudge,
+    onFineNudge: fineNudge,
+    onFineSnap: () => fineSnap(),
     onDelete: deleteSelected,
     onRestore: restoreSelected,
     onAudition: () => selection && transport.audition(selection.stem.id, selection.slice),
@@ -219,6 +298,7 @@ export default function ResultsStep({
             refs={refs}
             onScrubTimeline={gestures.scrubTimeline}
             onScrubOverview={gestures.scrubOverview}
+            onZoomSection={zoomSection}
             onLoopDrag={gestures.dragLoopRange}
             onSelect={(stemId, regionIdx) => setSelected({ stemId, regionIdx })}
             onDeselect={() => setSelected(null)}
@@ -230,6 +310,7 @@ export default function ResultsStep({
             }}
             onRenameStem={onRenameStem}
             onRenameRegion={onRenameRegion}
+            onReorderStem={onReorderStem}
             onMute={onMute}
             onSolo={onSolo}
             onLoopRegion={transport.loopRegion}
@@ -244,6 +325,8 @@ export default function ResultsStep({
             onAudition={() => selection && transport.audition(selection.stem.id, selection.slice)}
             onResetTrim={restoreSelected}
             onDelete={deleteSelected}
+            onFine={fineTrim}
+            onFineSnap={fineSnap}
           />
         </>
       ) : (

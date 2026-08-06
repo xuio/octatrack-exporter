@@ -1,13 +1,40 @@
+import { useEffect, useMemo, useState } from 'react';
+import { barLabelStep } from '../../lib/index.js';
+
 /**
  * Whole-song strip. Click or drag anywhere to move the playhead; the lighter
- * rectangle marks the part of the song the timeline below is showing.
+ * rectangle marks the part of the song the timeline below is showing, and a
+ * double-click frames that section in the timeline.
  */
-export default function Overview({ regions, totalBars, loopRegionIdx, containerRef, playheadRef, viewportRef, onScrub }) {
+export default function Overview({
+  regions, totalBars, loopRegionIdx, containerRef, playheadRef, viewportRef, onScrub, onZoomSection,
+}) {
+  // The label spacing is a pixel question, not a bar question — a 200-bar song
+  // in a narrow window needs a coarser step than the same song full-screen.
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return undefined;
+    setWidth(el.clientWidth);
+    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [containerRef]);
+
+  const barLabels = useMemo(() => {
+    if (!width || !totalBars) return [];
+    const step = barLabelStep(totalBars, width);
+    const out = [];
+    for (let bar = 0; bar < totalBars; bar += step) out.push(bar);
+    return out;
+  }, [width, totalBars]);
+
   return (
     <div
       ref={containerRef}
       onPointerDown={onScrub}
-      title="Click or drag to jump"
+      onDoubleClick={onZoomSection}
+      title="Click or drag to jump · double-click a section to zoom to it"
       style={{
         position: 'relative', height: 26, flex: 'none', overflow: 'hidden',
         borderBottom: '1px solid var(--color-divider)', background: 'var(--color-surface)',
@@ -35,6 +62,23 @@ export default function Overview({ regions, totalBars, loopRegionIdx, containerR
           </span>
         </div>
       ))}
+
+      {/* Bar numbers live in their own strip along the bottom edge, clear of the
+          section names at the top, so the two never overlap. */}
+      {barLabels.map(bar => (
+        <span
+          key={bar}
+          className="mono"
+          style={{
+            position: 'absolute', bottom: 1, left: `${bar / totalBars * 100}%`,
+            paddingLeft: 3, fontSize: 9, lineHeight: 1, whiteSpace: 'nowrap',
+            color: 'var(--color-neutral-500)', pointerEvents: 'none',
+          }}
+        >
+          {bar + 1}
+        </span>
+      ))}
+
       <div
         ref={viewportRef}
         style={{

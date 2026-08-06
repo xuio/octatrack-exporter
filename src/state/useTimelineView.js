@@ -1,7 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-
-const MIN_PPM = 2;
-const MAX_PPM = 160;
+import { MIN_PPM, MAX_PPM, clampPpm, ppmForRange } from '../lib/index.js';
 
 /**
  * Zoom, scroll and the follow-the-playhead behaviour of the timeline.
@@ -56,6 +54,37 @@ export function useTimelineView({ follow, setFollow, playing }) {
   }, []);
 
   /**
+   * Frame a bar range: zoom until it fills most of the viewport and put it in
+   * the middle. Double-clicking a section in the overview lands here.
+   */
+  const zoomToRange = useCallback((barA, barB) => {
+    const el = scrollerRef.current;
+    const width = el?.clientWidth || 1200;
+    const bars = Math.max(1, barB - barA);
+    const next = ppmForRange(bars, width);
+    setPpm(next);
+    // The scroller has not been laid out at the new zoom yet, so the scroll
+    // position has to wait a frame — same dance as zoomAt.
+    requestAnimationFrame(() => {
+      if (!el) return;
+      el.scrollLeft = Math.max(0, barA * next - Math.max(0, width - bars * next) / 2);
+      setViewport({ scrollX: el.scrollLeft, width: el.clientWidth });
+    });
+    return next;
+  }, []);
+
+  /** Put zoom and scroll back where a restored session left them. */
+  const restoreView = useCallback(({ ppm: nextPpm, scrollX }) => {
+    if (Number.isFinite(nextPpm)) setPpm(clampPpm(nextPpm));
+    requestAnimationFrame(() => {
+      const el = scrollerRef.current;
+      if (!el) return;
+      if (Number.isFinite(scrollX)) el.scrollLeft = Math.max(0, scrollX);
+      setViewport({ scrollX: el.scrollLeft, width: el.clientWidth });
+    });
+  }, []);
+
+  /**
    * Trackpad pinch arrives as a wheel event with ctrlKey; a horizontal wheel
    * means the user is driving the view, so stop following the playhead.
    */
@@ -93,5 +122,8 @@ export function useTimelineView({ follow, setFollow, playing }) {
     setViewport({ scrollX: el.scrollLeft, width: el.clientWidth });
   }, []);
 
-  return { ppm, setPpm, viewport, scrollerRef, attachScroller, onScroll, onWheel, zoomAt, zoomToFit, keepPlayheadVisible, revealRange };
+  return {
+    ppm, setPpm, viewport, scrollerRef, attachScroller, onScroll, onWheel,
+    zoomAt, zoomToFit, zoomToRange, restoreView, keepPlayheadVisible, revealRange,
+  };
 }

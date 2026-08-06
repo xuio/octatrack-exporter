@@ -145,6 +145,16 @@ export function useTransport({ stems, mixer, tracks, base, volume }) {
     setLoopRegionIdx(null);
   }, [base, cueLoop, barToSample]);
 
+  /**
+   * Put a saved loop back on the ruler without cueing it — restoring a session
+   * must not start playback. `play()` picks the span up from `loopSpan()`.
+   */
+  const restoreLoop = useCallback((loop) => {
+    if (!loop) return;
+    if (loop.regionIdx != null) { setLoopRegionIdx(loop.regionIdx); setLoopBars(null); }
+    else if (Number.isFinite(loop.a)) { setLoopBars({ a: loop.a, b: loop.b }); setLoopRegionIdx(null); }
+  }, []);
+
   /** Step the section loop to the previous / next pattern, still playing. */
   const stepLoopSection = useCallback((delta) => {
     if (!base?.regs.length) return;
@@ -164,7 +174,7 @@ export function useTransport({ stems, mixer, tracks, base, volume }) {
 
   return {
     engine, playing, paused, startBar, setStartBar, loopRegionIdx, loopBars,
-    play, pause, stop, toggle, seekToBar, loopRegion, loopRange, stepLoopSection, releaseLoop, audition,
+    play, pause, stop, toggle, seekToBar, loopRegion, loopRange, stepLoopSection, releaseLoop, restoreLoop, audition,
     positionSamples, checkEnd, spm,
     barToSample,
   };
