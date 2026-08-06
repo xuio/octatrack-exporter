@@ -8,7 +8,7 @@ import {
   writeOt, writeBankPatterns, writeMarkersSlots,
   readOt, readBankPattern, readMarkersSlot, verifyExport, bankChecksumOk, markersChecksumOk,
 } from '../src/lib/index.js';
-import { bankGeometry, makeBank, makeMarkers } from './fixtures.js';
+import { bankGeometry, makeBank, makeMarkers, SCALE_SENTINEL } from './fixtures.js';
 
 const GEOM = bankGeometry();
 
@@ -28,9 +28,12 @@ const JOBS = [{
   ],
 }];
 
+// Tracks 1 and 4 carry the stems; 6, 7 and the master track 8 are the user's own.
+const SCALE_TRACKS = [0, 1, 2, 3, 4];
+
 /** A complete, correct export — the baseline every corruption test starts from. */
 function build() {
-  const bank = writeBankPatterns(makeBank(), JOBS, 124);
+  const bank = writeBankPatterns(makeBank(), JOBS, 124, SCALE_TRACKS);
   const markers = writeMarkersSlots(makeMarkers(), [{ slot0: 0, totalFrames: 705600, slices: SLICES }]);
   const bytesPerFrame = 6;
   return {
@@ -47,6 +50,7 @@ function build() {
       slot0: 0, wav: 'AA_DRUMS.wav', ot: 'AA_DRUMS.ot',
       totalFrames: 705600, bytesPerFrame, slices: SLICES,
     }],
+    scaleTracks: SCALE_TRACKS,
   };
 }
 
@@ -63,7 +67,7 @@ test('a correct export reads back as exactly what was asked for', () => {
 });
 
 test('the bank reader decodes trigs back to the steps and slices they were written from', () => {
-  const bank = writeBankPatterns(makeBank(), JOBS, 124);
+  const bank = writeBankPatterns(makeBank(), JOBS, 124, SCALE_TRACKS);
   const read = readBankPattern(bank.bytes, 0);
 
   assert.equal(read.masterLen, 255, 'master length INF');
@@ -71,9 +75,13 @@ test('the bank reader decodes trigs back to the steps and slices they were writt
   assert.equal(read.masterScale, 2, 'master scale 1x');
   assert.ok(Math.abs(read.tempo - 124) < 0.05);
 
-  for (const track of read.tracks) {
+  for (const track of read.tracks.filter(t => SCALE_TRACKS.includes(t.trackIdx))) {
     assert.equal(track.LEN, 32);
     assert.equal(track.mult, '1/2x', `track ${track.trackIdx + 1} tempo multiplier`);
+  }
+  // and the ones outside the stem set still read the fixture's own scale bytes
+  for (const track of read.tracks.filter(t => !SCALE_TRACKS.includes(t.trackIdx))) {
+    assert.deepEqual([track.LEN, track.multCode], SCALE_SENTINEL, `track ${track.trackIdx + 1} untouched`);
   }
   assert.deepEqual(
     read.tracks[0].trigs.map(t => [t.step, t.slice]),
@@ -161,6 +169,29 @@ test('the exact corruptions that reached the device are all caught', () => {
     assert.equal(result.ok, false, `${name} must not verify clean`);
     assert.match(result.problems.join(' | '), expected, name);
   }
+});
+
+test('scale is only asserted on the tracks OSSC was told to write', () => {
+  // Whatever the user had on tracks 6-8 is none of the verifier's business: those
+  // bytes were never written, so any value there must verify clean.
+  const arbitrary = build();
+  const bank = dataOf(arbitrary, 'SONG/bank02.work');
+  for (const t of [5, 6, 7]) {
+    bank[GEOM.trackAt(0, t) + 89] = 17;
+    bank[GEOM.trackAt(0, t) + 90] = 0;    // 2x — nothing like the section's 32/1/2x
+  }
+  bank[bank.length - 2] = 0; bank[bank.length - 1] = 0;
+  let sum = 0;
+  for (let i = 20; i < bank.length - 2; i++) sum = (sum + bank[i]) & 0xFFFF;
+  bank[bank.length - 2] = sum >> 8; bank[bank.length - 1] = sum & 255;
+  assert.deepEqual(verifyExport(arbitrary).problems, []);
+
+  // but a stem track's scale still has to match, or the section loops wrong
+  const broken = build();
+  dataOf(broken, 'SONG/bank02.work')[GEOM.trackAt(0, 2) + 89] = 16;
+  const result = verifyExport(broken);
+  assert.equal(result.ok, false);
+  assert.match(result.problems.join(' | '), /T3: scale reads 16/);
 });
 
 test('a bank whose checksum was not updated is reported', () => {

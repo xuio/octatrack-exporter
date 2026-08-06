@@ -9,7 +9,9 @@ th,td{border:1px solid #c8ccd8;padding:5px 8px;text-align:left;font-size:11px;ve
 th{background:#eef0f6}td small,p small{color:#666}@media print{body{margin:8mm}}`;
 
 const SETUP_NOTE = `Trigs, slice p-locks and per-track scales (master length INF, master scale 1x) are
-pre-programmed into the bank files. Trigs carry no sample locks — each track plays its default sample.
+pre-programmed into the bank files. The per-track scale is set only on the tracks listed above; any
+other track — one you keep for remixing, and the master track 8 — keeps the scale it already had.
+Trigs carry no sample locks — each track plays its default sample.
 One-time device step: on each used track in the part, assign a STATIC machine and set its default sample
 (TRK DEFAULT) to the slot in the table above. If a track shows no slices, reload the slot&#39;s sample once —
 the .ot file beside each WAV carries the slice grid. The table below is a reference (and the manual recipe

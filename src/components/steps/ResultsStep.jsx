@@ -42,7 +42,9 @@ export default function ResultsStep({
   useViewportIndicator({ refs, scrollerRef: timeline.scrollerRef, ppm: timeline.ppm, totalBars: base.total, viewport: timeline.viewport });
   const gestures = useTimelineGestures({ base, ppm: timeline.ppm, tracks, edits, transport, paintBars, refs });
 
-  const buckets = bucketsPerBarFor(timeline.ppm);
+  // The bucket grid depends on the style: "bars" needs room between its bars,
+  // the outline styles want one bucket a pixel.
+  const buckets = bucketsPerBarFor(timeline.ppm, prefs.waveStyle);
   const pathsFor = useCallback(
     (stem, slice) => waveforms.pathsFor(stem, slice.aM, slice.bM, buckets, prefs.waveStyle),
     [waveforms, buckets, prefs.waveStyle],

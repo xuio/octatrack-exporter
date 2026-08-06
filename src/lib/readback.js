@@ -145,9 +145,15 @@ const trigKey = t => `${t.step}:${t.slice}`;
  * slice lists the .ot and markers writers consumed — so a disagreement means a
  * writer did not do what the caller asked, which is the only thing this can
  * usefully prove without a device.
+ *
+ * `scaleTracks` is the same list the bank writer was given. Only those tracks'
+ * scales are asserted: on every other track the bytes are the user's own, and
+ * this pass has no way to know what they were (the writer test does — it seeds
+ * sentinels and diffs them across a write).
  */
-export function verifyExport({ entries, folder, bpm, banks, stems, markersWritten = true }) {
+export function verifyExport({ entries, folder, bpm, banks, stems, markersWritten = true, scaleTracks = [] }) {
   const problems = [];
+  const scaleSet = new Set(scaleTracks);
   const files = new Map(entries.map(e => [e.name, e.data]));
   const at = name => files.get(folder ? `${folder}/${name}` : name);
   const counts = { patterns: 0, trigs: 0, slices: 0, slots: 0 };
@@ -220,7 +226,7 @@ export function verifyExport({ entries, folder, bpm, banks, stems, markersWritte
 
       for (const track of read.tracks) {
         const label = `${where} T${track.trackIdx + 1}`;
-        if (track.LEN !== job.LEN || track.mult !== job.mult) {
+        if (scaleSet.has(track.trackIdx) && (track.LEN !== job.LEN || track.mult !== job.mult)) {
           problems.push(`${label}: scale reads ${track.LEN}/${track.mult || `code ${track.multCode}`}, expected ${job.LEN}/${job.mult}`);
         }
         const want = (job.tracks.find(x => x.trackIdx === track.trackIdx) || { trigs: [] }).trigs;

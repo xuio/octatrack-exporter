@@ -24,6 +24,11 @@ export function bankGeometry(R = 2) {
   };
 }
 
+/** Per-track scale bytes (+89/+90) every fixture bank starts with, standing in for
+ *  whatever the user's own project had there. Any track OSSC is not told to touch
+ *  must still read exactly these afterwards. */
+export const SCALE_SENTINEL = [0xAB, 0xCD];
+
 export function makeBank(R = 2) {
   const { att, psize } = bankGeometry(R);
   const buf = new Uint8Array(22 + 16 * psize + 100 + 2);
@@ -31,7 +36,11 @@ export function makeBank(R = 2) {
   for (let k = 0; k < 16; k++) {
     const b = 22 + k * psize;
     buf.set([0x50, 0x54, 0x52, 0x4E, 0, 0, 0, 0], b);
-    for (let t = 0; t < 8; t++) buf.set([0x54, 0x52, 0x41, 0x43, 0, 0, 0, 0, t], b + 8 + t * att);
+    for (let t = 0; t < 8; t++) {
+      const o = b + 8 + t * att;
+      buf.set([0x54, 0x52, 0x41, 0x43, 0, 0, 0, 0, t], o);
+      buf.set(SCALE_SENTINEL, o + 89);
+    }
   }
   return buf;
 }

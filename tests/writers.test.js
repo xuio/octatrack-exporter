@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeOt, writeBankPatterns, writeMarkersSlots, writeStaticSlots, scaleFor, trigStep } from '../src/lib/index.js';
-import { bankGeometry, makeBank, makeMarkers, firedSteps } from './fixtures.js';
+import { bankGeometry, makeBank, makeMarkers, firedSteps, SCALE_SENTINEL } from './fixtures.js';
 
 test('writeOt: size, tempo, checksum coverage', () => {
   const ot = writeOt(111, 441000, [{ start: 0, end: 100 }]);
@@ -24,7 +24,7 @@ test('writeBankPatterns: trig mask bytes land on the device steps', () => {
     { patternIdx: 0, LEN: 64, mult: '1x', tracks: [{ trackIdx: 0, trigs: [{ step: 33, slice: 0 }] }] },
     { patternIdx: 1, LEN: 36, mult: '1/4x', tracks: [{ trackIdx: 2, trigs: [{ step: 17, slice: 0 }] }, { trackIdx: 3, trigs: [{ step: 25, slice: 1 }] }, { trackIdx: 4, trigs: [{ step: 9, slice: 0 }] }] },
   ];
-  const res = writeBankPatterns(makeBank(), jobs, 111);
+  const res = writeBankPatterns(makeBank(), jobs, 111, [0, 1, 2, 3, 4]);
   assert.ok(!res.error, res.error);
   assert.deepEqual(firedSteps(res.bytes, geom, 0, 0), [33]);
   assert.deepEqual(firedSteps(res.bytes, geom, 1, 2), [17]);
@@ -41,6 +41,51 @@ test('writeBankPatterns: trig mask bytes land on the device steps', () => {
   // per-track len + scale
   const t0 = geom.trackAt(0, 0);
   assert.deepEqual([res.bytes[t0 + 89], res.bytes[t0 + 90]], [64, 2]);
+});
+
+test('writeBankPatterns: only the named tracks have their scale touched', () => {
+  const geom = bankGeometry();
+  const source = makeBank();
+  const jobs = [
+    // pattern 0 trigs stem tracks 0 and 4; pattern 1 is programmed but silent on
+    // most of them — either way, all five stem tracks must get the section scale.
+    { patternIdx: 0, LEN: 64, mult: '1x', tracks: [{ trackIdx: 0, trigs: [{ step: 1, slice: 0 }] }, { trackIdx: 4, trigs: [{ step: 9, slice: 1 }] }] },
+    { patternIdx: 1, LEN: 32, mult: '1/2x', tracks: [] },
+  ];
+  const res = writeBankPatterns(source.slice(), jobs, 111, [0, 1, 2, 3, 4]);
+  assert.ok(!res.error, res.error);
+
+  for (const [patternIdx, LEN, multCode] of [[0, 64, 2], [1, 32, 4]]) {
+    for (let t = 0; t <= 4; t++) {
+      const o = geom.trackAt(patternIdx, t);
+      assert.deepEqual([res.bytes[o + 89], res.bytes[o + 90]], [LEN, multCode], `P${patternIdx + 1} T${t + 1} scale`);
+    }
+    // tracks 6, 7 and the master track 8: the user's own bytes, to the byte
+    for (let t = 5; t < 8; t++) {
+      const o = geom.trackAt(patternIdx, t);
+      assert.deepEqual([res.bytes[o + 89], res.bytes[o + 90]], SCALE_SENTINEL, `P${patternIdx + 1} T${t + 1} scale must be untouched`);
+    }
+  }
+  // and the patterns this build never programmed keep every track's scale
+  for (let patternIdx = 2; patternIdx < 16; patternIdx++) {
+    for (let t = 0; t < 8; t++) {
+      const o = geom.trackAt(patternIdx, t);
+      assert.deepEqual([res.bytes[o + 89], res.bytes[o + 90]], SCALE_SENTINEL, `P${patternIdx + 1} T${t + 1} scale must be untouched`);
+    }
+  }
+});
+
+test('writeBankPatterns: with no scale tracks named, no scale byte moves at all', () => {
+  const source = makeBank();
+  const jobs = [{ patternIdx: 0, LEN: 64, mult: '1x', tracks: [{ trackIdx: 0, trigs: [{ step: 1, slice: 0 }] }] }];
+  const res = writeBankPatterns(source.slice(), jobs, 111);
+  assert.ok(!res.error, res.error);
+  const geom = bankGeometry();
+  for (let t = 0; t < 8; t++) {
+    const o = geom.trackAt(0, t);
+    assert.deepEqual([res.bytes[o + 89], res.bytes[o + 90]], SCALE_SENTINEL, `T${t + 1} scale`);
+  }
+  assert.equal(res.trigsWritten, 1, 'trigs are still written');
 });
 
 test('writeMarkersSlots: static slot offsets + checksum', () => {

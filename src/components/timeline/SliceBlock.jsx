@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { waveViewBox } from '../../lib/index.js';
 
 const FILLS = {
   // [peak envelope, body, highlight] with matching opacities — the outer shape
@@ -29,7 +30,7 @@ function SliceBlock({ slice, left, width, buckets, paths, style, selected, onSel
       }}
     >
       {paths && (
-        <svg viewBox={`0 0 ${buckets} 32`} preserveAspectRatio="none"
+        <svg viewBox={waveViewBox(buckets)} preserveAspectRatio="none"
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }}>
           <path d={paths.p1} fill={fill.colors[0]} opacity={fill.alpha[0]} />
           <path d={paths.p2} fill={fill.colors[1]} opacity={fill.alpha[1]} />

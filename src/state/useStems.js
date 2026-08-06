@@ -1,12 +1,14 @@
 import { useCallback, useRef, useState } from 'react';
-import { parseMidi, readZip, audioEntries } from '../lib/index.js';
+import { parseMidi, readZip, audioEntries, sortByTrackNumber, stripTrackNumber } from '../lib/index.js';
 import { decodeAudio, synthesizeDemo, AUDIO_RE } from '../workers/audioClient.js';
 
 /** Track names are uppercase and bounded — the Octatrack's own display limit. */
 export const normalizeStemName = (name) => name.toUpperCase().slice(0, 20);
 
-const stemName = (fileName) =>
-  normalizeStemName(fileName.replace(AUDIO_RE, '').replace(/[_-]?\d+$/, '')) || 'STEM';
+// The leading track number has done its job once the batch is in order, so it
+// comes off the display name — "1 DRUMS.wav" is the DRUMS track.
+export const stemName = (fileName) =>
+  normalizeStemName(stripTrackNumber(fileName.replace(AUDIO_RE, '')).replace(/[_-]?\d+$/, '')) || 'STEM';
 
 /** Pull audio/MIDI members out of any dropped .zip archives, leaving other files alone. */
 async function expandArchives(files, errors) {
@@ -52,7 +54,14 @@ export function useStems({ onLoaded }) {
     const collected = [];
     let nextMidi = replace ? null : midi;
 
-    for (const file of expanded) {
+    // Only the incoming batch is ordered: stems already in the list may have
+    // been dragged into place by hand, and that has to stand.
+    const ordered = [
+      ...sortByTrackNumber(expanded.filter(f => AUDIO_RE.test(f.name)), f => f.name),
+      ...expanded.filter(f => !AUDIO_RE.test(f.name)),
+    ];
+
+    for (const file of ordered) {
       try {
         setReading(file.name);
         await new Promise(r => setTimeout(r, 20));

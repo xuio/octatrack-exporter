@@ -15,15 +15,37 @@ const FALLBACK = {
   accent800: '#423a6a', neutral100: '#f3f5fe', neutral800: '#3f424d',
 };
 
-/** Resolved token values for canvas drawing, re-read whenever the theme changes. */
+const readTokens = () => {
+  const style = getComputedStyle(document.documentElement);
+  return /** @type {typeof FALLBACK} */ (Object.fromEntries(
+    Object.entries(TOKENS).map(([key, token]) =>
+      [key, (style.getPropertyValue(token) || '').trim() || FALLBACK[key]]),
+  ));
+};
+
+const same = (a, b) => Object.keys(TOKENS).every(key => a[key] === b[key]);
+
+/**
+ * Resolved token values for canvas drawing, re-read whenever the theme changes.
+ *
+ * The trigger is the `data-theme` attribute landing on <html>, not the React
+ * prop: the attribute is written by an effect in App, and effects run child
+ * first, so a hook keyed on the theme name reads the *old* variables — the
+ * canvases then painted a whole theme behind until the next switch. Observing
+ * the attribute cannot lose that race whichever effect runs first, and reading
+ * computed styles flushes the pending style recalc, so the values are the ones
+ * the rest of the page is about to use.
+ */
 export function useThemeColors(theme) {
   const [colors, setColors] = useState(FALLBACK);
   useEffect(() => {
-    const style = getComputedStyle(document.documentElement);
-    const read = (name, fallback) => (style.getPropertyValue(name) || '').trim() || fallback;
-    setColors(Object.fromEntries(
-      Object.entries(TOKENS).map(([key, token]) => [key, read(token, FALLBACK[key])]),
-    ));
-  }, [theme]);
+    // Same values on a re-read mean the same object, so consumers that repaint
+    // on a colour change (the scopes and meters) are not woken for nothing.
+    const sync = () => setColors(prev => { const next = readTokens(); return same(prev, next) ? prev : next; });
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    sync();                       // the attribute may already be there (it usually is)
+    return () => observer.disconnect();
+  }, [theme]);                    // re-syncs on mount and on any theme the observer somehow missed
   return colors;
 }

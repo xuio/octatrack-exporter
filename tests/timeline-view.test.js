@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MIN_PPM, MAX_PPM, clampPpm, ppmForRange, barLabelStep, restorableView } from '../src/lib/index.js';
+import {
+  MIN_PPM, MAX_PPM, clampPpm, ppmForRange, barLabelStep, restorableView,
+  barAtViewportX, anchoredScrollLeft,
+} from '../src/lib/index.js';
 
 const material = { stemCount: 5, regionIdxs: [1, 2, 3], totalBars: 64 };
 
@@ -27,6 +30,44 @@ test('overview bar numbers thin out as the song gets longer or the strip narrowe
   assert.equal(barLabelStep(128, 1200), 8);    // 9.4px a bar → every 8th
   assert.equal(barLabelStep(128, 400), 16);    // same song, third of the width
   assert.equal(barLabelStep(2000, 1200), 128);
+});
+
+test('the bar under the cursor stays under the cursor across a zoom step', () => {
+  const scrollLeft = 800, x = 300, ppm = 16;
+  const bar = barAtViewportX(scrollLeft, x, ppm);   // (800 + 300) / 16 = 68.75
+  assert.equal(bar, 68.75);
+  for (const next of [16 * 1.1, 16 * 1.4, 16 / 1.1, 40, 160]) {
+    const scrolled = anchoredScrollLeft(scrollLeft, x, ppm, next);
+    assert.ok(Math.abs(barAtViewportX(scrolled, x, next) - bar) < 1e-9);
+  }
+});
+
+test('a stream of zoom steps does not let the anchored bar drift', () => {
+  // What a pinch actually does: many small steps, each anchored on the last.
+  const x = 420;
+  let scrollLeft = 1500, ppm = 24;
+  const bar = barAtViewportX(scrollLeft, x, ppm);
+  for (let i = 0; i < 200; i++) {
+    const next = clampPpm(ppm * (i % 2 ? 1.03 : 1.07));
+    scrollLeft = anchoredScrollLeft(scrollLeft, x, ppm, next);
+    ppm = next;
+  }
+  assert.equal(ppm, MAX_PPM);   // it climbed to the ceiling
+  assert.ok(Math.abs(barAtViewportX(scrollLeft, x, ppm) - bar) < 1e-6);
+});
+
+test('zooming out past the left edge lands on 0 rather than a negative scroll', () => {
+  // Bar 5 under a cursor 100px in; zoom out hard and bar 5 would need the view
+  // to start left of bar 0.
+  const scrollLeft = 5 * 40 - 100, ppm = 40;
+  assert.equal(barAtViewportX(scrollLeft, 100, ppm), 5);
+  assert.equal(anchoredScrollLeft(scrollLeft, 100, ppm, 4), 0);      // 20 - 100 < 0
+  assert.equal(anchoredScrollLeft(scrollLeft, 100, ppm, MIN_PPM), 0);
+  // already at the left edge: staying there is the fixed point, no drift out
+  assert.equal(anchoredScrollLeft(0, 100, ppm, MIN_PPM), 0);
+  let s = 0;
+  for (let i = 0; i < 50; i++) s = anchoredScrollLeft(s, 100, ppm, ppm);
+  assert.equal(s, 0);
 });
 
 test('a snapshot from before view state existed restores nothing at all', () => {

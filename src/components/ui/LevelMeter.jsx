@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useAnimationFrame } from '../../state/useAnimationFrame.js';
 import { drawMeter, readPeak, advanceEnvelope, newEnvelope } from '../../audio/visualizers.js';
 import { MASTER_TICKS, dbPos } from '../../lib/meters.js';
@@ -9,14 +9,20 @@ export default function LevelMeter({ analyser, active, horizontal = false, color
   const envelope = useRef(newEnvelope());
   const buffer = useRef(null);
 
-  useAnimationFrame(active, () => {
+  const paint = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const size = analyser ? analyser.fftSize : 2048;
     if (!buffer.current || buffer.current.length !== size) buffer.current = new Float32Array(size);
     advanceEnvelope(envelope.current, readPeak(analyser, buffer.current));
     drawMeter(canvas, envelope.current, { horizontal, colors });
-  });
+  }, [analyser, horizontal, colors]);
+
+  useAnimationFrame(active, paint);
+
+  // Canvas pixels are not restyled by a theme change — repaint once so an idle
+  // meter picks the new colours up too.
+  useEffect(() => { paint(); }, [colors, paint]);
 
   return <canvas ref={canvasRef} title={title} style={style} />;
 }

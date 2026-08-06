@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildStemSlices, trimLimits, splitTrim, normalizeProject, boundariesFor, scaleFor, makeZip, readZip, audioEntries, bucketsPerBarFor, barBands, meterPos, dbPos } from '../src/lib/index.js';
+import { buildStemSlices, trimLimits, splitTrim, normalizeProject, boundariesFor, scaleFor, makeZip, readZip, audioEntries, bucketsPerBarFor, barBands, wavePaths, waveViewBox, WAVE_H, meterPos, dbPos } from '../src/lib/index.js';
 
 const BPM = 111;
 // two regions: bars 0-8 (9 bars, 1/4x) and bars 9-12 (4 bars, 1x)
@@ -150,6 +150,58 @@ test('bucketsPerBarFor grows waveform detail with zoom and stays bounded', () =>
   assert.equal(bucketsPerBarFor(1), 4);
   assert.equal(bucketsPerBarFor(100000), 512);
   assert.equal(Math.log2(bucketsPerBarFor(37)) % 1, 0, 'always a power of two so cached bars stay valid');
+});
+
+test('a bucket lands on about one pixel at every zoom, and bars stay separable', () => {
+  // MIN_PPM..MAX_PPM is 2..160; anything under a pixel a bucket is detail no
+  // display can show, anything over it is a visibly faceted outline.
+  for (let ppm = 4; ppm <= 160; ppm++) {
+    const px = ppm / bucketsPerBarFor(ppm);
+    assert.ok(px >= 0.5 && px <= 1.25, `${ppm} px a bar draws a bucket every ${px} px`);
+    // Below 8 px a bar the four-bucket floor wins, and there is nothing to
+    // separate anyway — a whole bar is a few pixels wide.
+    const barsPx = ppm / bucketsPerBarFor(ppm, 'bars');
+    assert.ok(ppm < 8 || barsPx >= 2, `"bars" needs room between its bars, got ${barsPx} px at ${ppm}`);
+  }
+});
+
+test('peaks are read from every sample once a bucket is small enough to show one', () => {
+  // one lone spike in the middle of the bar, the kind a stride would step over
+  const n = 44100, chL = new Float32Array(n), chR = new Float32Array(n);
+  for (let i = 0; i < n; i++) { chL[i] = chR[i] = Math.sin(i / 400) * 0.05; }
+  chL[22051] = chR[22051] = 0.9;
+  const spikeAt = b => b.max[Math.floor(22051 / (n / b.n))];
+  assert.ok(spikeAt(barBands(chL, chR, 0, n, 64)) > 0.85, 'a 689-sample bucket reads every sample');
+  // a bucket spanning half a second is an energy blob; the stride there is fine
+  assert.ok(barBands(chL, chR, 0, n, 4).max[1] < 0.9);
+});
+
+test('the waveform outline fills its viewBox from edge to edge', () => {
+  const n = 8;
+  const bands = {
+    min: new Float32Array(n).fill(-0.5), max: new Float32Array(n).fill(0.5),
+    rms: new Float32Array(n).fill(0.2), low: new Float32Array(n).fill(0.2),
+    high: new Float32Array(n).fill(0.1), n,
+  };
+  assert.equal(waveViewBox(n), `-0.5 0 ${n} ${WAVE_H}`);
+  for (const style of ['spectral', 'band', 'bars']) {
+    const { p1, p2, p3 } = wavePaths(bands, style);
+    assert.ok(p1, `${style} draws a shape`);
+    assert.ok(p2 || p3, `${style} draws a body or a highlight`);
+    for (const d of [p1, p2, p3].filter(Boolean)) {
+      for (const x of d.match(/-?\d+(\.\d+)?(?=,)/g).map(Number)) {
+        // bucket k sits at x = k, so the drawing spans -0.5 .. n-0.5 — exactly
+        // the viewBox, with no blank bucket left over at either end
+        assert.ok(x >= -0.5 && x <= n - 0.5, `${style} draws at x=${x}, outside the viewBox`);
+      }
+    }
+    // the outline styles reach both extremes, so nothing is cropped and no
+    // bucket-wide sliver is left blank at the end of the clip
+    if (style !== 'bars') {
+      assert.ok(p1.startsWith('M-0.5,'), `${style} starts at the clip's left edge`);
+      assert.ok(p1.includes(`${n - 0.5},`), `${style} reaches the right edge`);
+    }
+  }
 });
 
 test('waveform buckets are anchored to bars, so trimming does not shift the drawing', () => {

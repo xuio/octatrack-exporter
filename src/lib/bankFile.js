@@ -54,25 +54,38 @@ export function bankLayout(src) {
  *  ot-tools-io's doc claiming h1-before-h2 on pages 2–4 is wrong. */
 const maskByte = halfPage => 7 - halfPage;
 
-export function writeBankPatterns(src, jobs, bpm) {
+/**
+ * @param scaleTracks track indices (0-based) whose per-track scale may be
+ *   stamped. Every other track's +89/+90 bytes are left exactly as they came in:
+ *   the user keeps tracks OSSC did not fill for their own material (a 1-bar
+ *   remix track, the master track 8), and their scale is theirs to set. Empty by
+ *   default so a caller that forgets can only under-write, never clobber.
+ */
+export function writeBankPatterns(src, jobs, bpm, scaleTracks = []) {
   // Always work on a copy: the caller keeps the original to diff the parts
   // region against afterwards, and that check is worthless if the two alias.
   const layout = bankLayout(src instanceof Uint8Array ? src.slice() : new Uint8Array(src).slice());
   if (layout.error) return { error: layout.error };
   const { u8, psize, attSize, rSize, plockRel } = layout;
+  const scaleSet = new Set(scaleTracks);
 
   let trigsWritten = 0, patternsWritten = 0;
   for (const job of jobs) {
     const base = layout.patternAt(job.patternIdx), multCode = MULT_CODE[job.mult];
     if (multCode === undefined || job.LEN < 2 || job.LEN > 64) continue;
     // per-track mode; master length INF (mult=255, len=255) so each track loops on its own
-    // SCALE TRACK length; master scale stays 1x (code 2). Track lengths are set per-track below.
+    // SCALE TRACK length; master scale stays 1x (code 2). This block is pattern-global —
+    // without it per-track mode never engages — so it is written whole. Only the
+    // individual track lengths below are selective.
     const so = layout.scaleAt(base);
     u8[so] = 255; u8[so + 1] = 255; u8[so + 2] = 2; u8[so + 5] = 1;
     if (bpm) { const t24 = Math.round(bpm * 24); u8[base + psize - 2] = t24 >> 8; u8[base + psize - 1] = t24 & 255; } // pattern tempo (used when pattern-tempo mode is on)
     for (let t = 0; t < 8; t++) {
       const o = layout.trackAt(base, t);
-      u8[o + 89] = job.LEN; u8[o + 90] = multCode; // per-track len + scale
+      // Stem tracks get the section's loop length even in patterns where the stem
+      // has no trig — the loop still has to line up with the section. Tracks OSSC
+      // did not fill keep whatever scale the user's project had.
+      if (scaleSet.has(t)) { u8[o + 89] = job.LEN; u8[o + 90] = multCode; }
       const tj = job.tracks.find(x => x.trackIdx === t);
       if (!tj) continue;
       const mask = new Uint8Array(8);

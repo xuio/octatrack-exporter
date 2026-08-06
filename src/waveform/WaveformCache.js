@@ -6,9 +6,18 @@ import { barBands, wavePaths } from '../lib/analysis.js';
 // the old 600-entry limit, so a single zoom step overflowed and threw the whole
 // cache away, twice per step (measured). Every zoom level then had to be
 // recomputed from scratch each time it was revisited.
+//
+// Measured per bucket (8×64 stress, 120 bars): band arrays are 20 B (five
+// Float32s) and path strings 68–112 B depending on style — spectral is the
+// dearest at 112 B because it draws three outlines. Buckets per bar doubled when
+// the waveform went to roughly one bucket a CSS pixel, so a whole song at the
+// top zoom is now 9.8 MB of bands (was 4.9) across all eight stems and every
+// zoom level ever visited sums to about 20 MB — still inside the bar budget.
+// Paths are the five-times-bigger ones and only exist for clips on screen, but
+// 16 MB stopped being comfortable at the new density, so they get 32 MB.
 const BAR_BUDGET = 48 << 20;
 const SPAN_BUDGET = 24 << 20;
-const PATH_BUDGET = 16 << 20;
+const PATH_BUDGET = 32 << 20;
 
 /**
  * A Map with a byte budget. Insertion order is eviction order and a hit moves
@@ -106,7 +115,7 @@ export class WaveformCache {
     const key = `${stem.id}:${from}:${to}:${bucketsPerBar}:${style}`;
     let paths = this.paths.get(key);
     if (!paths) {
-      paths = wavePaths(this.span(stem, from, to, bucketsPerBar), style, 32);
+      paths = wavePaths(this.span(stem, from, to, bucketsPerBar), style);
       this.paths.set(key, paths, pathBytes(paths));
     }
     return paths;

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useAnimationFrame } from '../../state/useAnimationFrame.js';
 import { drawScope, drawSpectrum } from '../../audio/visualizers.js';
 
@@ -9,7 +9,7 @@ export default function Oscilloscope({ analyser, mode, active, colors, sampleRat
   const freqBuffer = useRef(null);
   const peaks = useRef(null);
 
-  useAnimationFrame(active && mode !== 'off', () => {
+  const paint = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     if (mode === 'fft') {
@@ -21,7 +21,14 @@ export default function Oscilloscope({ analyser, mode, active, colors, sampleRat
       if (!timeBuffer.current || timeBuffer.current.length !== size) timeBuffer.current = new Float32Array(size);
       drawScope(canvas, analyser, timeBuffer.current, { colors, sampleRate });
     }
-  });
+  }, [analyser, mode, colors, sampleRate]);
+
+  useAnimationFrame(active && mode !== 'off', paint);
+
+  // A new theme has to reach the canvas even when nothing is driving the frame
+  // loop — the pixels are not styled by CSS, so without one repaint they keep
+  // the old palette until playback starts again.
+  useEffect(() => { if (mode !== 'off') paint(); }, [colors, mode, paint]);
 
   return (
     <canvas

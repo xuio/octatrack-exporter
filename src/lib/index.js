@@ -6,6 +6,7 @@ export * from './aiff.js';
 export * from './midi.js';
 export * from './analysis.js';
 export * from './slices.js';
+export * from './stemOrder.js';
 export * from './zerocross.js';
 export * from './transport.js';
 export * from './timelineView.js';

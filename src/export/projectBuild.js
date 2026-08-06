@@ -77,6 +77,15 @@ export async function buildProject({ project, stems, tracks, regions, bpm, abbre
 
   if (stems.length > 8) report.push({ warn: true, text: 'Octatrack has 8 audio tracks — stems 9+ are not programmed' });
 
+  // Which tracks OSSC is allowed to set the per-track scale on: only the ones it
+  // actually put a stem on. Everything else — a track kept for remixing at its
+  // own bar length, and above all track 8, the master track — keeps the scale the
+  // user's project already had.
+  const scaleTracks = exported.map(s => s.slot0).filter(i => i < 7);
+  if (exported.some(s => s.slot0 === 7)) {
+    report.push({ warn: true, text: 'Stem 8 lands on track 8, the master track — its trigs are written but its scale is left untouched; set SCALE TRACK length and tempo multiplier on track 8 by hand' });
+  }
+
   const jobs = bankJobs(regions, stems, tracks, report);
   const pending = new Set(Object.keys(jobs).map(Number));
   const written = {};   // banks that were actually programmed, for the readback pass
@@ -109,7 +118,7 @@ export async function buildProject({ project, stems, tracks, regions, bpm, abbre
         report.push({ text: `markers.work: trim + 64-slice grid written for ${res.slotsWritten} Static slots, checksum updated — slices appear on the device immediately` });
       }
     } else if (bankMatch && jobs[Number(bankMatch[1])]) {
-      const res = writeBankPatterns(bytes, jobs[Number(bankMatch[1])], bpm);
+      const res = writeBankPatterns(bytes, jobs[Number(bankMatch[1])], bpm, scaleTracks);
       if (res.error) {
         report.push({ warn: true, text: `${rel}: ${res.error} — copied unchanged; program its patterns from the sheet` });
         entries.push({ name: `${folder}/${rel}`, data: bytes });
@@ -126,7 +135,7 @@ export async function buildProject({ project, stems, tracks, regions, bpm, abbre
           trigsWritten += res.trigsWritten;
           pending.delete(Number(bankMatch[1]));
           written[Number(bankMatch[1])] = jobs[Number(bankMatch[1])];
-          report.push({ text: `${rel}: ${res.patternsWritten} patterns written — trigs + slice p-locks (samples via TRK DEFAULT, no sample locks) + per-track scales, master length INF · structure verified against this file (pattern ${res.psize} B · track section ${res.attSize} B) · parts/scenes byte-identical · checksum updated` });
+          report.push({ text: `${rel}: ${res.patternsWritten} patterns written — trigs + slice p-locks (samples via TRK DEFAULT, no sample locks) + per-track scales on the ${scaleTracks.length} stem track(s) only (all other tracks' scales untouched), master length INF · structure verified against this file (pattern ${res.psize} B · track section ${res.attSize} B) · parts/scenes byte-identical · checksum updated` });
         }
       }
     } else {
@@ -150,7 +159,7 @@ export async function buildProject({ project, stems, tracks, regions, bpm, abbre
   // cannot prove the device agrees with our reading of the format, but it does
   // prove the writers did what this build intended — which is where every format
   // bug so far has actually been.
-  const verifyInputs = { folder, bpm, stems: exported, banks: written, markersWritten };
+  const verifyInputs = { folder, bpm, stems: exported, banks: written, markersWritten, scaleTracks };
   const check = verifyEntries(entries, verifyInputs);
   for (const problem of check.problems) {
     report.push({ warn: true, text: `Readback check: ${problem}` });

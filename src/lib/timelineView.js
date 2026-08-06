@@ -15,6 +15,30 @@ export const clampPpm = (ppm) => Math.max(MIN_PPM, Math.min(MAX_PPM, ppm));
 export const ppmForRange = (bars, width, fill = 0.8) =>
   clampPpm((Math.max(1, width) * fill) / Math.max(1, bars));
 
+/**
+ * The bar sitting under a point `x` pixels from the left edge of the viewport.
+ * @param {number} scrollLeft
+ * @param {number} x
+ * @param {number} ppm
+ */
+export const barAtViewportX = (scrollLeft, x, ppm) => (scrollLeft + x) / ppm;
+
+/**
+ * Where the scroller has to land so the bar currently under `x` is still under
+ * `x` once the zoom has gone from `ppm` to `nextPpm`.
+ *
+ * Zooming out far enough that the anchored bar would need negative scroll
+ * clamps to 0: the timeline simply cannot show anything left of bar 0, so the
+ * anchor slides rather than the content drifting off screen.
+ *
+ * @param {number} scrollLeft
+ * @param {number} x
+ * @param {number} ppm
+ * @param {number} nextPpm
+ */
+export const anchoredScrollLeft = (scrollLeft, x, ppm, nextPpm) =>
+  Math.max(0, barAtViewportX(scrollLeft, x, ppm) * nextPpm - x);
+
 // Bar numbers are only useful as landmarks, so the step jumps in musical
 // powers of two rather than whatever divides evenly.
 const LABEL_STEPS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024];

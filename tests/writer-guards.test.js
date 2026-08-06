@@ -5,6 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeBankPatterns, writeMarkersSlots, writeStaticSlots, parseProjectText } from '../src/lib/index.js';
+import { SCALE_SENTINEL, bankGeometry } from './fixtures.js';
 
 const BANK_HEADER = [70, 79, 82, 77, 0, 0, 0, 0, 68, 80, 83, 49, 66, 65, 78, 75, 0, 0, 0, 0, 0, 23];
 const MARKERS_HEADER = [0x46, 0x4F, 0x52, 0x4D, 0, 0, 0, 0, 0x44, 0x50, 0x53, 0x31, 0x53, 0x41, 0x4D, 0x50, 0, 0, 0, 0, 0, 4];
@@ -21,12 +22,14 @@ function bank({ version = 23, patterns = 16, badTrack = null, allTracksWrong = f
       const o = at + 8 + t * att;
       const id = allTracksWrong ? 9 : (t === badTrack ? 9 : t);
       buf.set([0x54, 0x52, 0x41, 0x43, 0, 0, 0, 0, id], o);
+      buf.set(SCALE_SENTINEL, o + 89);   // stands in for the user's own per-track scale
     }
   }
   return buf;
 }
 
 const JOB = [{ patternIdx: 0, LEN: 64, mult: '1x', tracks: [{ trackIdx: 0, trigs: [{ step: 1, slice: 0 }] }] }];
+const SCALE_TRACKS = [0, 1, 2, 3, 4];
 
 test('the bank writer refuses anything it was not verified against', () => {
   assert.match(writeBankPatterns(new Uint8Array(5000), JOB, 120).error, /header mismatch/);
@@ -42,7 +45,7 @@ test('the bank writer refuses anything it was not verified against', () => {
 test('a bank that verifies is written, and only the pattern region changes', () => {
   const source = bank();
   const before = source.slice();
-  const result = writeBankPatterns(source.slice(), JOB, 120);
+  const result = writeBankPatterns(source.slice(), JOB, 120, SCALE_TRACKS);
   assert.ok(!result.error, result.error);
   assert.equal(result.patternsWritten, 1);
   assert.equal(result.trigsWritten, 1);
@@ -50,6 +53,28 @@ test('a bank that verifies is written, and only the pattern region changes', () 
   for (let i = result.partsStart; i < before.length - 2; i++) {
     assert.equal(result.bytes[i], before[i], `parts byte ${i} changed`);
   }
+});
+
+test('the scale of a track OSSC did not fill survives a write byte-for-byte', () => {
+  // The user keeps track 7 at their own remix length and track 8 is the master
+  // track. Neither is named as a scale track, so both must read back exactly as
+  // they came in — everywhere in the file, not just in the programmed pattern.
+  const { trackAt } = bankGeometry();
+  const before = bank();
+  const result = writeBankPatterns(before.slice(), JOB, 120, SCALE_TRACKS);
+  assert.ok(!result.error, result.error);
+
+  for (let idx = 0; idx < 16; idx++) {
+    for (let t = 5; t < 8; t++) {
+      const o = trackAt(idx, t);
+      assert.deepEqual(
+        [result.bytes[o + 89], result.bytes[o + 90]], [before[o + 89], before[o + 90]],
+        `P${idx + 1} T${t + 1} scale changed`,
+      );
+    }
+  }
+  // the stem track it *was* told to write did change, so the test can fail
+  assert.deepEqual([result.bytes[trackAt(0, 0) + 89], result.bytes[trackAt(0, 0) + 90]], [64, 2]);
 });
 
 test('an out-of-range job is skipped instead of writing a bad pattern', () => {

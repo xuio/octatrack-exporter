@@ -180,7 +180,9 @@ and you get back a complete copy under a name of your choosing:
 - `project.work` — Static slots 1–N assigned, project tempo set, timestretch off, gain at unity
 - `markers.work` — trim and slice grid per slot, so slices show up without reloading samples
 - `bank02+.work` — one sample trig per stem per section, with the slice p-locked via `STRT`, the
-  per-track scale set, and `MASTER LENGTH = INF`
+  per-track scale set **on the stem tracks only**, and `MASTER LENGTH = INF`. Tracks OSSC did not
+  fill — one you keep for remixing at its own bar length, and the master track 8 — keep whatever
+  scale they already had.
 - `PATTERNS.html` — a printable sheet of everything that was written
 
 **Your parts and scenes are never rewritten.** Bank offsets are verified against your own file
