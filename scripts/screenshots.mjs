@@ -3,12 +3,19 @@
 //   npm run screenshots
 // Everything is driven through the UI — no reaching into component internals —
 // so this doubles as an end-to-end smoke test of the whole flow.
+//
+// Material: by default the shots use a real song's stems + MIDI loaded from
+// STEMS_DIR (a folder of "1 NAME.wav" … files plus the arrangement .mid) so the
+// README shows real music rather than the synthesized demo. When the folder is
+// absent — CI, another machine — it falls back to the built-in demo.
 import puppeteer from 'puppeteer-core';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const BASE = process.env.BASE || 'http://localhost:4173/octatrack-exporter/';
 const OUT = 'docs/img';
+const STEMS_DIR = process.env.STEMS_DIR || '/Users/moritz/Downloads/Turn The Night Electric';
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
 mkdirSync(OUT, { recursive: true });
@@ -84,8 +91,21 @@ await wait(500);
 // 1 — intake
 await fitToContent();
 await shot('01-files-empty');
-await click('Shake');
-await until(() => /STEMS · 5 loaded/.test(document.body.innerText));
+const files = existsSync(STEMS_DIR)
+  ? readdirSync(STEMS_DIR).filter(f => /\.(wav|aiff?|flac|mid|midi)$/i.test(f) && !f.startsWith('.')).map(f => join(STEMS_DIR, f))
+  : null;
+if (files) {
+  console.log(`· loading ${files.length} files from ${STEMS_DIR}`);
+  const input = await page.$('input[type=file]');
+  await input.uploadFile(...files);
+  // real stems are minutes long — decoding takes a while
+  await until(() => /STEMS · \d+ loaded/.test(document.body.innerText), null, 180000);
+} else {
+  console.log('· STEMS_DIR not found — using the built-in demo');
+  await click('Shake');
+  await until(() => /STEMS · 5 loaded/.test(document.body.innerText));
+}
+await wait(400);
 await fitToContent();
 await shot('02-files-loaded');
 
@@ -115,7 +135,10 @@ await fitToTimeline();
 await shot('05-timeline');
 
 // a selected clip shows its trim handles and the detail bar
-await page.evaluate(() => document.querySelectorAll('.slice-block')[8].dispatchEvent(new MouseEvent('click', { bubbles: true })));
+await page.evaluate(() => {
+  const blocks = document.querySelectorAll('.slice-block');
+  blocks[Math.min(8, blocks.length - 1)].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+});
 await until(() => document.querySelectorAll('.trim-h').length === 2);
 await fitToTimeline();
 await shot('06-slice-selected');

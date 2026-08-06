@@ -24,10 +24,18 @@ export default function Overview({
   const barLabels = useMemo(() => {
     if (!width || !totalBars) return [];
     const step = barLabelStep(totalBars, width);
+    // Section labels sit at each region's left edge; a bar number starting in
+    // that zone reads as one smudged glyph pile at this strip height, so those
+    // numbers are dropped rather than stacked.
+    const labelZones = regions.map(r => (r.start / totalBars) * width);
     const out = [];
-    for (let bar = 0; bar < totalBars; bar += step) out.push(bar);
+    for (let bar = 0; bar < totalBars; bar += step) {
+      const x = (bar / totalBars) * width;
+      if (labelZones.some(zone => x >= zone - 14 && x <= zone + 44)) continue;
+      out.push(bar);
+    }
     return out;
-  }, [width, totalBars]);
+  }, [width, totalBars, regions]);
 
   return (
     <div

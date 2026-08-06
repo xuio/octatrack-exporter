@@ -96,8 +96,10 @@ bounced — sample-for-sample, at the level you left it.
 <img src="docs/img/02-files-loaded.png" alt="Files step" width="100%">
 
 Drag your files anywhere onto the pane. Each stem becomes a row; the order here becomes the
-Octatrack **track order**, so drag them into the order you want with the ▲▼ buttons. Rename a stem
-by typing in its field — that name ends up in the exported file names.
+Octatrack **track order**. Stems named with a leading track number — `1 DRUMS.wav`, `2 BASS.wav` —
+sort themselves onto the right tracks automatically (and the number is dropped from the display
+name); anything else can be moved with the ▲▼ buttons. Rename a stem by typing in its field — that
+name ends up in the exported file names.
 
 ### 2 · Confirm the tempo
 
