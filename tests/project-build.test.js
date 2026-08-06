@@ -8,8 +8,10 @@ import {
   makeDemo, parseMidi, parseWav, regionsFromTicks, boundariesFor,
   measurePeaks, buildStemSlices, dbToLin,
 } from '../src/lib/index.js';
-import { buildProject } from '../src/export/projectBuild.js';
-import { makeBank, makeMarkers } from './fixtures.js';
+import { buildProject, verifyEntries } from '../src/export/projectBuild.js';
+import { decodeExport } from '../src/export/patternDecode.js';
+import { writeEntries, readEntriesBack } from '../src/export/dirWrite.js';
+import { makeBank, makeMarkers, fakeDir } from './fixtures.js';
 
 const PROJECT_TEXT = '[META]\r\nTYPE=OCTATRACK DPS-1 PROJECT\r\n[/META]\r\n\r\n'
   + '[SETTINGS]\r\nTEMPOx24=2880\r\n[/SETTINGS]\r\n\r\n############################\r\n\r\n';
@@ -67,6 +69,77 @@ test('a generated project verifies against its own pattern table', async () => {
   assert.equal(names.filter(n => n.endsWith('.wav')).length, stems.length);
   assert.equal(names.filter(n => n.endsWith('.ot')).length, stems.length);
   assert.ok(names.every(n => !n.includes('AUDIO/')), 'nothing goes in the set-level AUDIO pool');
+});
+
+/** The demo project every delivery test below is built from. */
+const demoFiles = () => ({
+  'project.work': encode(PROJECT_TEXT),
+  'markers.work': makeMarkers(),
+  'bank02.work': makeBank(),
+  'bank03.work': makeBank(),
+});
+
+test('the structured verify result says the same thing as the report prose', async () => {
+  const { stems, tracks, regions, bpm } = analyzeDemo();
+  const { report, verify, verifyInputs } = await buildProject({
+    project: fakeProject(demoFiles()), stems, tracks, regions, bpm, abbrev: 'DEMO', folder: 'DEMO',
+  });
+
+  assert.equal(verify.ok, true);
+  assert.deepEqual(verify.problems, []);
+  assert.ok(verify.counts.trigs > 0 && verify.counts.patterns > 0);
+  // the headline line is worded from exactly these counts
+  assert.ok(texts(report).includes(
+    `Readback verified: ${verify.counts.trigs} trigs across ${verify.counts.patterns} patterns, `
+    + `${verify.counts.slices} slices and every checksum decode back to exactly what the pattern table shows`,
+  ));
+  assert.equal(report.filter(r => r.warn && /Readback check/.test(r.text)).length, 0);
+  // and the inputs handed out are enough to re-run the identical check later
+  assert.deepEqual(Object.keys(verifyInputs).sort(), ['banks', 'bpm', 'folder', 'markersWritten', 'stems']);
+});
+
+test('a mismatch shows up per trig in the structured verify result', async () => {
+  const { stems, tracks, regions, bpm } = analyzeDemo();
+  const broken = regions.map((r, i) => (i === 1 ? { ...r, scale: { ...r.scale, LEN: 128 } } : r));
+  const { verify } = await buildProject({
+    project: fakeProject(demoFiles()), stems, tracks, regions: broken, bpm, abbrev: 'DEMO', folder: 'DEMO',
+  });
+
+  assert.equal(verify.ok, false);
+  assert.ok(verify.problems.length > 0);
+});
+
+test('the decoded pattern table is read out of the written bank bytes', async () => {
+  const { stems, tracks, regions, bpm } = analyzeDemo();
+  const { entries, verify, verifyInputs } = await buildProject({
+    project: fakeProject(demoFiles()), stems, tracks, regions, bpm, abbrev: 'DEMO', folder: 'DEMO',
+  });
+
+  const banks = decodeExport({ entries, folder: 'DEMO', banks: verifyInputs.banks });
+  // the demo arrangement fits in one bank; bank03 is copied through, not programmed
+  assert.deepEqual(banks.map(b => b.name), ['bank02.work']);
+  assert.ok(banks.every(b => !b.error));
+
+  const chips = banks.flatMap(b => b.patterns.flatMap(p => p.tracks.flatMap(t => t.chips)));
+  assert.equal(chips.length, verify.counts.trigs, 'one chip per verified trig');
+  assert.ok(chips.every(c => c.state === 'ok'), 'every decoded trig matches its intended slice');
+  assert.ok(banks.every(b => b.patterns.every(p => p.ok && p.tracks.every(t => t.scaleOk))));
+});
+
+test('entries delivered through the folder path verify identically on the way back', async () => {
+  const { stems, tracks, regions, bpm } = analyzeDemo();
+  const { entries, verify, verifyInputs } = await buildProject({
+    project: fakeProject(demoFiles()), stems, tracks, regions, bpm, abbrev: 'DEMO', folder: 'DEMO',
+  });
+
+  const root = fakeDir('CARD');
+  assert.equal(await writeEntries(root, entries), entries.length);
+  assert.ok(root.dirs.has('DEMO'), 'the project folder is created inside the picked directory');
+
+  const disk = await readEntriesBack(root, entries);
+  const check = verifyEntries(disk, verifyInputs);
+  assert.deepEqual(check.problems, []);
+  assert.deepEqual(check.counts, verify.counts, 'what is on disk verifies exactly as the build did');
 });
 
 test('a pattern the bank writer silently skipped is caught, not shipped empty', async () => {

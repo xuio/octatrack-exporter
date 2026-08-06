@@ -12,8 +12,8 @@ import { useCallback, useEffect } from 'react';
 
 /** What each shortcut does, in the order the help panel lists them. */
 export const SHORTCUTS = [
-  { keys: ['Space'], text: 'Play / stop' },
-  { keys: ['Home'], text: 'Back to bar 1' },
+  { keys: ['Space'], text: 'Play / pause — resumes where it stopped' },
+  { keys: ['Home'], text: 'Stop and go back to bar 1' },
   { keys: ['F'], text: 'Follow the playhead' },
   { keys: ['←', '→'], text: 'Select the previous / next clip' },
   { keys: ['↑', '↓'], text: 'Select the clip in the track above / below' },
@@ -23,6 +23,7 @@ export const SHORTCUTS = [
   { keys: ['⌫'], text: 'Delete the selected clip' },
   { keys: ['R'], text: 'Restore it to the full section' },
   { keys: ['L'], text: 'Loop the selected clip’s section' },
+  { keys: ['⇧drag'], text: 'Loop a bar range — drag in the ruler' },
   { keys: ['M'], text: 'Mute the selected clip’s track' },
   { keys: ['S', '⇧S'], text: 'Solo it — shift adds to the solo group' },
   { keys: ['+', '−', '0'], text: 'Zoom in / out / fit' },

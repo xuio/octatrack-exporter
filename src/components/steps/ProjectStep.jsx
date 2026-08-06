@@ -1,6 +1,10 @@
-import { useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import DropZone from '../ui/DropZone.jsx';
 import Field from '../ui/Field.jsx';
+import VerifyPanel from '../project/VerifyPanel.jsx';
+import InspectPanel from '../project/InspectPanel.jsx';
+import { canWriteToFolder } from '../../export/dirWrite.js';
+import { inspectProject } from '../../export/patternDecode.js';
 
 const Stat = ({ label, children }) => (
   <div>
@@ -26,6 +30,50 @@ export default function ProjectStep({
 }) {
   const folderInput = useRef(null);
   const zipInput = useRef(null);
+
+  // The generated files are held here until the user says where they go. Any
+  // change to what would be generated drops them, so the zip and the folder
+  // write can never disagree with the settings on screen.
+  const [build, setBuild] = useState(null);
+  const [disk, setDisk] = useState(null);
+  const [notice, setNotice] = useState('');
+  const [writing, setWriting] = useState(false);
+  const [inspection, setInspection] = useState(null);
+  const [inspecting, setInspecting] = useState(false);
+  const canWrite = canWriteToFolder();
+
+  useEffect(() => {
+    setBuild(null);
+    setDisk(null);
+    setNotice('');
+  }, [project, folderName, stemCount, regionCount]);
+
+  useEffect(() => { setInspection(null); }, [project]);
+
+  const generate = useCallback(async () => {
+    setDisk(null);
+    setNotice('');
+    setBuild(await onGenerate());
+  }, [onGenerate]);
+
+  const writeToFolder = useCallback(async () => {
+    setWriting(true);
+    setNotice('');
+    const result = await build.writeToFolder();
+    if (result.status === 'ok') setDisk(result);
+    else if (result.status !== 'cancelled') setNotice(result.message || 'Could not write to that folder.');
+    setWriting(false);
+  }, [build]);
+
+  const inspect = useCallback(async () => {
+    setInspecting(true);
+    try {
+      setInspection(await inspectProject(project));
+    } catch (err) {
+      setNotice(`Could not read this project: ${err.message}`);
+    }
+    setInspecting(false);
+  }, [project]);
 
   return (
     <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'minmax(320px, 400px) 1fr', gap: 18, padding: '26px 24px', alignContent: 'start' }}>
@@ -101,16 +149,72 @@ export default function ProjectStep({
             <Field label="Output folder / ZIP name" value={folderName} onChange={onFolderName}
               placeholder={folderPlaceholder} style={{ maxWidth: 320, marginTop: 8 }} />
 
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 10 }}>
-              <button className="btn btn-primary" onClick={onGenerate} disabled={busy}>
-                {busy ? 'Generating…' : 'Generate project copy (ZIP)'}
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+              <button className="btn btn-primary" onClick={generate} disabled={busy}>
+                {busy ? 'Generating…' : build ? 'Regenerate project copy' : 'Generate project copy'}
               </button>
+              {build && (
+                <>
+                  <button className="btn btn-secondary" onClick={build.downloadZip} disabled={writing}>
+                    Download .zip
+                  </button>
+                  <button className="btn btn-secondary" onClick={writeToFolder} disabled={!canWrite || writing}
+                    title={canWrite
+                      ? 'Pick your CF card (or any folder) — the project folder is created inside it'
+                      : 'Your browser has no File System Access API — use Chrome or Edge, or take the .zip'}>
+                    {writing ? 'Writing…' : 'Write to folder…'}
+                  </button>
+                </>
+              )}
               <span className="hint" style={{ maxWidth: 420 }}>
                 Bank format per community research (ot-tools-io); every offset re-verified against your own
                 file before writing. One-time device step afterwards: STATIC machines on the used tracks with
                 the matching slot as TRK DEFAULT — slices are already p-locked per trig.
               </span>
             </div>
+
+            {build && (
+              <div className="hint">
+                {build.entries.length} files built and held in the browser — nothing has been saved yet.
+                Take the .zip, or write straight onto the card.
+              </div>
+            )}
+            {report && !build && !busy && (
+              <div className="notice">◆ Settings changed since this report — regenerate before saving.</div>
+            )}
+            {notice && <div className="notice">◆ {notice}</div>}
+
+            {build && (
+              <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <VerifyPanel
+                  title="Generated files verified"
+                  source="the generated bytes"
+                  verify={build.verify}
+                  banks={build.banks}
+                  defaultOpen={!build.verify.ok}
+                />
+                {disk && (
+                  <VerifyPanel
+                    title={`Verified on disk (${disk.written} files)`}
+                    source="the files that landed in the folder you picked"
+                    verify={disk.verify}
+                    banks={disk.banks}
+                    defaultOpen={!disk.verify.ok}
+                  />
+                )}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12 }}>
+              <button className="btn btn-secondary" onClick={inspect} disabled={inspecting}>
+                {inspecting ? 'Decoding…' : 'Inspect programmed patterns'}
+              </button>
+              <span className="hint" style={{ maxWidth: 420 }}>
+                Decodes the loaded project as it stands — drop a previously generated project here to see
+                exactly what is programmed in its banks.
+              </span>
+            </div>
+            {inspection && <InspectPanel result={inspection} />}
 
             {report && (
               <div className="card elev-sm" style={{ marginTop: 14, maxWidth: 720 }}>
@@ -124,8 +228,9 @@ export default function ProjectStep({
                   </div>
                 ))}
                 <div style={{ fontSize: 11, color: 'var(--color-neutral-500)', marginTop: 4 }}>
-                  Copy the ZIP contents onto your CF card set: the project folder (audio included) goes beside
-                  your other projects. Keep a backup; verify the first load on the device.
+                  The project folder (audio included) goes beside your other projects in the CF card set —
+                  either by unzipping it there, or by writing straight into the set folder. Keep a backup;
+                  verify the first load on the device.
                 </div>
               </div>
             )}

@@ -57,6 +57,34 @@ export function useTimelineGestures({ base, ppm, tracks, edits, transport, paint
   const scrubOverview = useCallback((e) => scrub(barAtOverview, e), [scrub, barAtOverview]);
 
   /**
+   * Shift-drag in the ruler: a whole-bar loop range. The brace is painted
+   * directly while the pointer is down (React only hears about the range on
+   * release), so dragging across a long song stays free of re-renders.
+   */
+  const dragLoopRange = useCallback((e) => {
+    if (!base) return;
+    e.preventDefault();
+    const brace = refs.loopBrace.current;
+    const anchor = Math.floor(barAtTimeline(e));
+    let to = anchor;
+    const paint = () => {
+      if (!brace) return;
+      const a = Math.min(anchor, to), b = Math.max(anchor, to) + 1;
+      brace.style.display = 'block';
+      brace.style.left = `${a * ppm}px`;
+      brace.style.width = `${(b - a) * ppm}px`;
+    };
+    paint();
+    drag(
+      ev => { to = Math.floor(barAtTimeline(ev)); paint(); },
+      () => {
+        paint();          // the release position, in case React renders no change
+        transport.loopRange(Math.min(anchor, to), Math.max(anchor, to) + 1);
+      },
+    );
+  }, [base, ppm, refs, transport, barAtTimeline]);
+
+  /**
    * Trim a clip edge. The span is recomputed from the layout captured at
    * pointer-down, so dragging out and back does not accumulate, and crossing a
    * section boundary splits the overhang into that section's own clip.
@@ -90,5 +118,5 @@ export function useTimelineGestures({ base, ppm, tracks, edits, transport, paint
     );
   }, [base, ppm, tracks, edits]);
 
-  return { scrubTimeline, scrubOverview, startTrim };
+  return { scrubTimeline, scrubOverview, dragLoopRange, startTrim };
 }

@@ -32,9 +32,11 @@ const Segmented = ({ name, options, value, onChange, padding = '3px 8px', fontSi
 );
 
 export default function Transport({
-  playing, positionRef, positionLabel, follow, edits, history, warnings, view, waveStyle, scopeMode,
+  playing, paused, positionRef, positionLabel, timeRef, timeLabel,
+  follow, edits, history, warnings, view, waveStyle, scopeMode,
   volume, threshold, thresholdDraft, masterAnalyser, colors, active, showKeys,
-  onPlay, onStop, onToStart, onToggleFollow, onUndo, onRedo, onClearLoop, loopLabel,
+  onPlay, onPause, onStop, onToStart, onToggleFollow, onUndo, onRedo, onClearLoop, loopLabel,
+  patternRef, patternLabel, onLoopPrev, onLoopNext,
   onVolume, onThresholdGrab, onThresholdSlide, onThresholdRelease, onThresholdDraft, onThresholdCommit, onThresholdStep,
   onZoomIn, onZoomOut, onZoomFit, onWaveStyle, onScopeMode, onView, onResetEdits,
   onToggleWarnings, onToggleKeys, onExport,
@@ -47,20 +49,29 @@ export default function Transport({
       <button className={`tb ${playing ? 'on' : ''}`} onClick={onPlay} title="Play (space)" aria-label="Play">
         <Icon><path d="M1 0l8 5-8 5z" fill="currentColor" /></Icon>
       </button>
-      <button className="tb" onClick={onStop} title="Stop (space)" aria-label="Stop">
+      <button className={`tb ${paused ? 'on' : ''}`} onClick={onPause} title="Pause (space) — resumes from here" aria-label="Pause">
+        <Icon size={9}><path d="M0 0h3v9H0zM6 0h3v9H6z" fill="currentColor" /></Icon>
+      </button>
+      <button className="tb" onClick={onStop} title="Stop — back to the start bar" aria-label="Stop">
         <Icon size={9}><rect width="9" height="9" fill="currentColor" /></Icon>
       </button>
 
-      <span
-        className="mono"
-        ref={positionRef}
-        style={{
-          fontSize: 14, letterSpacing: '.08em', color: 'var(--color-accent-300)', minWidth: 74,
-          border: '1px solid var(--color-neutral-800)', borderRadius: 4, padding: '2px 10px',
-          background: 'var(--color-surface)', textAlign: 'center',
-        }}
-      >
-        {positionLabel}
+      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
+        <span
+          className="mono"
+          ref={positionRef}
+          style={{
+            fontSize: 14, letterSpacing: '.08em', color: 'var(--color-accent-300)', minWidth: 74,
+            border: '1px solid var(--color-neutral-800)', borderRadius: 4, padding: '2px 10px',
+            background: 'var(--color-surface)', textAlign: 'center',
+          }}
+        >
+          {positionLabel}
+        </span>
+        <span className="mono" ref={timeRef} title="Elapsed time"
+          style={{ fontSize: 11, letterSpacing: '.06em', color: 'var(--color-neutral-500)', minWidth: 46 }}>
+          {timeLabel}
+        </span>
       </span>
 
       <button className={`tb ${follow ? 'on' : ''}`} onClick={onToggleFollow} title="Keep the view following the playhead">
@@ -75,10 +86,27 @@ export default function Transport({
       </span>
 
       {loopLabel && (
-        <button className="tag tag-accent" onClick={onClearLoop} title="Release the loop and keep playing from here"
-          style={{ fontSize: 10, border: 'none', cursor: 'pointer' }}>
-          ⟳ looping {loopLabel} ✕
-        </button>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          {patternLabel != null && (
+            <>
+              <button className="tb" style={{ minWidth: 22, height: 22 }} onClick={onLoopPrev}
+                title="Loop the previous pattern" aria-label="Previous pattern">◀</button>
+              <button className="tb" style={{ minWidth: 22, height: 22 }} onClick={onLoopNext}
+                title="Loop the next pattern" aria-label="Next pattern">▶</button>
+            </>
+          )}
+          <button className="tag tag-accent" onClick={onClearLoop} title="Release the loop and keep playing from here"
+            style={{ fontSize: 10, border: 'none', cursor: 'pointer' }}>
+            ⟳ looping {loopLabel} ✕
+          </button>
+          {patternLabel != null && (
+            // What the device would be showing for this pattern — repainted per frame.
+            <span className="mono" ref={patternRef} title="Pattern position on the device"
+              style={{ fontSize: 10, letterSpacing: '.04em', color: 'var(--color-neutral-500)' }}>
+              {patternLabel}
+            </span>
+          )}
+        </span>
       )}
 
       <Group label="VOL" title="Monitoring level only — never applied to exported audio">

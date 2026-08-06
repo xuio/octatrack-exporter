@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="OSSC">
+  <!-- OSSC app icon: a stem waveform cut by slice markers — the whole app in one
+       glyph. Colours are the default Nocturne theme's literal token values
+       (src/styles/tokens.css): the app's ground, its accent for the audio, and
+       accent-300 for the cuts — the markers win on lightness so they read as
+       cuts rather than as three more bars. Flat fills and axis-aligned rects
+       only, so it stays sharp down to a 16px favicon. The ground carries a
+       class because the maskable variant drops it (a rounded square inside a
+       platform's own circular mask reads as a mistake).
+       Regenerate the PNGs with `node scripts/icons.mjs` after editing. -->
+  <rect class="ground" width="512" height="512" rx="112" fill="#161826"/>
+  <rect class="ground" x="8" y="8" width="496" height="496" rx="104" fill="none" stroke="#2b2741" stroke-width="16"/>
+
+  <!-- the stem: bars mirrored about the centre line, 20px pitch -->
+  <g fill="#9184d9">
+    <rect x="100" y="222" width="12" height="68" rx="6"/>
+    <rect x="120" y="178" width="12" height="156" rx="6"/>
+    <rect x="140" y="128" width="12" height="256" rx="6"/>
+    <rect x="160" y="190" width="12" height="132" rx="6"/>
+    <rect x="180" y="204" width="12" height="104" rx="6"/>
+    <rect x="200" y="144" width="12" height="224" rx="6"/>
+    <rect x="220" y="106" width="12" height="300" rx="6"/>
+    <rect x="240" y="174" width="12" height="164" rx="6"/>
+    <rect x="260" y="216" width="12" height="80" rx="6"/>
+    <rect x="280" y="164" width="12" height="184" rx="6"/>
+    <rect x="300" y="120" width="12" height="272" rx="6"/>
+    <rect x="320" y="196" width="12" height="120" rx="6"/>
+    <rect x="340" y="181" width="12" height="150" rx="6"/>
+    <rect x="360" y="137" width="12" height="238" rx="6"/>
+    <rect x="380" y="168" width="12" height="176" rx="6"/>
+    <rect x="400" y="218" width="12" height="76" rx="6"/>
+  </g>
+
+  <!-- the cuts: thin, near-white, drawn over the audio and taller than it, so
+       they read as slice markers rather than as three more bars -->
+  <g fill="#d2cefd">
+    <rect x="173" y="76" width="6" height="360" rx="3"/>
+    <rect x="253" y="76" width="6" height="360" rx="3"/>
+    <rect x="333" y="76" width="6" height="360" rx="3"/>
+    <rect x="164" y="72" width="24" height="18" rx="6"/>
+    <rect x="244" y="72" width="24" height="18" rx="6"/>
+    <rect x="324" y="72" width="24" height="18" rx="6"/>
+  </g>
+</svg>

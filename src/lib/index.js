@@ -6,6 +6,7 @@ export * from './aiff.js';
 export * from './midi.js';
 export * from './analysis.js';
 export * from './slices.js';
+export * from './transport.js';
 export * from './unzip.js';
 export * from './dnd.js';
 export * from './meters.js';

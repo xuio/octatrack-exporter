@@ -27,6 +27,7 @@ export class AudioEngine {
     this.playing = false;
     this.loop = null;           // { start, end, len } in samples
     this.floorSample = 0;       // the playhead never reads before this
+    this.cueFloorTime = 0;      // no loop iteration is ever scheduled before this
     this.volume = 0.85;
     this.onStop = null;         // called when linear playback runs off the end
   }
@@ -131,9 +132,15 @@ export class AudioEngine {
     }
   }
 
-  /** One pass of the loop region. Anything already in the past is trimmed. */
+  /**
+   * One pass of the loop region. Anything already in the past is trimmed — and
+   * so is anything before `cueFloorTime`, which is how a cue that starts
+   * mid-loop (resuming from a pause) keeps its lead-in instead of blurting the
+   * first slices out immediately.
+   */
   scheduleLoopIteration(k) {
-    const { start, end, len } = this.loop, now = this.ctx.currentTime;
+    const { start, end, len } = this.loop;
+    const now = Math.max(this.ctx.currentTime, this.cueFloorTime);
     for (const track of this.tracks) {
       if (!this.gains.has(track.id)) continue;
       for (const slice of track.slices) {
@@ -168,6 +175,11 @@ export class AudioEngine {
   }
 
   // ---------- transport ----------
+  /**
+   * Start playing. With a loop, `from` picks the phase to enter it at — the
+   * loop still wraps at its own bounds, it just does not have to begin at the
+   * top, which is what makes resuming a paused loop land where it left off.
+   */
   play({ from = 0, loop = null } = {}) {
     const ctx = this.context();
     ctx.resume();
@@ -175,12 +187,14 @@ export class AudioEngine {
     this.syncGains();
     const t0 = ctx.currentTime + START_LEAD;
     this.anchorTime = t0;
+    this.cueFloorTime = t0;
     this.playing = true;
     if (loop) {
       this.loop = { ...loop, len: loop.end - loop.start };
-      this.anchorSample = loop.start;
+      const at = from > loop.start && from < loop.end ? from : loop.start;
+      this.anchorSample = at;
       this.floorSample = loop.start;
-      this.loopT0 = t0;
+      this.loopT0 = t0 - (at - loop.start) / SR;
       this.nextIteration = 0;
       this.pumpLoop();
     } else {
@@ -195,6 +209,19 @@ export class AudioEngine {
     this.stopSources({ fade: true });
     this.loop = null;
     this.playing = false;
+  }
+
+  /**
+   * Freeze at the current audible position and report it, so the caller can
+   * hand it straight back to `play({ from })`. The loop is left in place: a
+   * paused loop is still the active loop, both for the UI and for the resume.
+   */
+  pause() {
+    if (!this.playing || !this.ctx) return null;
+    const pos = this.position();
+    this.stopSources({ fade: true });
+    this.playing = false;
+    return pos;
   }
 
   /**
@@ -231,6 +258,7 @@ export class AudioEngine {
     if (!this.playing || !this.ctx) return;
     const at = this.ctx.currentTime + SWITCH_LEAD;
     this.stopSources({ at });
+    this.cueFloorTime = at;
     if (this.loop) {
       this.nextIteration = Math.max(0, Math.floor((at - this.loopT0) * SR / this.loop.len));
       this.pumpLoop();
@@ -254,7 +282,26 @@ export class AudioEngine {
     this.loop = { start, end, len: end - start };
     this.loopT0 = this.anchorTime + (end - this.anchorSample) / SR;
     this.nextIteration = 0;
+    this.cueFloorTime = this.loopT0;
     this.stopSources({ at: this.loopT0 });
+    this.pumpLoop();
+    return true;
+  }
+
+  /**
+   * Point an already-running loop at a different span, starting it from its
+   * top — how the device behaves when you select another pattern while it
+   * plays. Returns false when nothing is looping, so the caller can cue.
+   */
+  moveLoop(start, end) {
+    if (!this.playing || !this.loop || !this.ctx) return false;
+    const at = this.ctx.currentTime + SWITCH_LEAD;
+    this.stopSources({ at });
+    this.loop = { start, end, len: end - start };
+    this.loopT0 = at;
+    this.cueFloorTime = at;
+    this.floorSample = start;
+    this.nextIteration = 0;
     this.pumpLoop();
     return true;
   }
@@ -281,6 +328,7 @@ export class AudioEngine {
     this.stopSources({ at });
     if (this.loop && sample >= this.loop.start && sample < this.loop.end) {
       this.loopT0 = at - (sample - this.loop.start) / SR;
+      this.cueFloorTime = at;
       this.nextIteration = 0;
       this.pumpLoop();
       return;

@@ -42,6 +42,38 @@ export function makeMarkers() {
   return buf;
 }
 
+/**
+ * An in-memory stand-in for a FileSystemDirectoryHandle. The real picker cannot
+ * be driven from Node, so the directory-write path is exercised against this.
+ */
+export function fakeDir(name = '') {
+  const dirs = new Map(), files = new Map();
+  return {
+    name, dirs, files,
+    async getDirectoryHandle(child, opts = {}) {
+      if (!dirs.has(child)) {
+        if (!opts.create) throw Object.assign(new Error('not found'), { name: 'NotFoundError' });
+        dirs.set(child, fakeDir(child));
+      }
+      return dirs.get(child);
+    },
+    async getFileHandle(child, opts = {}) {
+      if (!files.has(child) && !opts.create) throw Object.assign(new Error('not found'), { name: 'NotFoundError' });
+      return {
+        name: child,
+        async createWritable() {
+          let data = null;
+          return { async write(d) { data = d; }, async close() { files.set(child, data); } };
+        },
+        async getFile() {
+          const data = files.get(child);
+          return { async arrayBuffer() { return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength); } };
+        },
+      };
+    },
+  };
+}
+
 /** Decode a track's trigger mask with the device mapping (byte = 7 − halfpage). */
 export function firedSteps(bytes, geom, patternIdx, trackIdx) {
   const o = geom.maskAt(patternIdx, trackIdx), out = [];

@@ -150,14 +150,13 @@ export async function buildProject({ project, stems, tracks, regions, bpm, abbre
   // cannot prove the device agrees with our reading of the format, but it does
   // prove the writers did what this build intended — which is where every format
   // bug so far has actually been.
-  const check = verifyExport({
-    entries, folder, bpm, stems: exported, banks: written, markersWritten,
-  });
+  const verifyInputs = { folder, bpm, stems: exported, banks: written, markersWritten };
+  const check = verifyEntries(entries, verifyInputs);
   for (const problem of check.problems) {
     report.push({ warn: true, text: `Readback check: ${problem}` });
   }
   report.unshift(check.ok
-    ? { text: `Readback verified: ${check.counts.trigs} trigs across ${check.counts.patterns} patterns, ${check.counts.slices} slices and every checksum decode back to exactly what the pattern table shows` }
+    ? { text: `Readback verified: ${verifyCountsText(check.counts)} and every checksum decode back to exactly what the pattern table shows` }
     : { warn: true, text: `Readback found ${check.problems.length} mismatch(es) between the generated files and the pattern table — see below before loading this on the device` });
 
   report.unshift({ text: 'PATTERNS.html reference sheet added (verification aid + manual fallback)' });
@@ -165,7 +164,22 @@ export async function buildProject({ project, stems, tracks, regions, bpm, abbre
   if (slotsWritten) report.unshift({ text: `${slots.length} Static sample slots written into project.work (timestretch off, ${bpm} BPM, trig quantize direct)` });
   report.unshift({ text: `${slots.length * 2} audio + .ot files added inside the project folder (no set-level AUDIO pool)` });
 
-  return { entries, report };
+  // `verify` is the same result the lines above are worded from, handed out
+  // structurally so the UI can show counts and per-trig mismatches without
+  // parsing prose; `verifyInputs` lets a later copy of the same files (the ones
+  // that landed on a card, say) be checked against the identical expectations.
+  return { entries, report, verify: check, verifyInputs };
 }
+
+/**
+ * Run the readback pass over one set of entries. Both the build itself and the
+ * on-disk re-check go through here, so neither can drift from the other.
+ */
+export function verifyEntries(entries, verifyInputs) {
+  return verifyExport({ entries, ...verifyInputs });
+}
+
+export const verifyCountsText = counts =>
+  `${counts.trigs} trigs across ${counts.patterns} patterns, ${counts.slices} slices`;
 
 export { bankPattern };

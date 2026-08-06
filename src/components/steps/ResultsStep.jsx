@@ -10,7 +10,7 @@ import { useTimelineGestures } from '../../state/useTimelineGestures.js';
 import { useTimelineKeys } from '../../state/useTimelineKeys.js';
 import { useThemeColors } from '../../state/useThemeColors.js';
 import { isAudible } from '../../state/useStems.js';
-import { bucketsPerBarFor, trimLimits } from '../../lib/index.js';
+import { bucketsPerBarFor, trimLimits, formatClock, patternReadout, rangeLabel, SR } from '../../lib/index.js';
 
 /** The arrangement editor: transport, timeline (or pattern table) and selection. */
 export default function ResultsStep({
@@ -29,9 +29,13 @@ export default function ResultsStep({
   const timeline = useTimelineView({ follow: prefs.follow, setFollow, playing: transport.playing });
   const refs = useTimelineRefs(timeline.attachScroller, timeline.scrollerRef);
 
+  // The looping section, if any — it drives the device-style pattern readout.
+  const loopRegion = base.regs.find(r => r.idx === transport.loopRegionIdx);
+
   const paintBars = usePlayhead({
     transport, refs, ppm: timeline.ppm, totalBars: base.total,
     follow: prefs.follow, keepPlayheadVisible: timeline.keepPlayheadVisible, active: true,
+    loopRegion,
   });
   useViewportIndicator({ refs, scrollerRef: timeline.scrollerRef, ppm: timeline.ppm, totalBars: base.total, viewport: timeline.viewport });
   const gestures = useTimelineGestures({ base, ppm: timeline.ppm, tracks, edits, transport, paintBars, refs });
@@ -114,15 +118,19 @@ export default function ResultsStep({
     onReveal: reveal,
   });
 
-  const loopRegion = base.regs.find(r => r.idx === transport.loopRegionIdx);
   const mixed = stems.map(s => ({ ...s, ...(mixer[s.id] || {}) }));
+  // The brace the ruler draws: a bar range, or the section being looped.
+  const loopBars = transport.loopBars ?? (loopRegion ? { a: loopRegion.start, b: loopRegion.end } : null);
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <Transport
         playing={transport.playing}
+        paused={transport.paused}
         positionRef={refs.position}
         positionLabel={`${String(transport.startBar).padStart(3, '0')}.1`}
+        timeRef={refs.time}
+        timeLabel={formatClock(transport.barToSample(transport.startBar - 1) / SR)}
         follow={prefs.follow}
         edits={edits}
         history={history}
@@ -137,8 +145,15 @@ export default function ResultsStep({
         colors={colors}
         showKeys={showKeys}
         active
-        loopLabel={loopRegion && `${String(loopRegion.idx).padStart(2, '0')}${loopRegion.name ? ` ${loopRegion.name.toUpperCase()}` : ''} (${loopRegion.bp})`}
+        loopLabel={loopRegion
+          ? `${String(loopRegion.idx).padStart(2, '0')}${loopRegion.name ? ` ${loopRegion.name.toUpperCase()}` : ''} (${loopRegion.bp})`
+          : transport.loopBars && rangeLabel(transport.loopBars.a, transport.loopBars.b)}
+        patternRef={refs.pattern}
+        patternLabel={loopRegion ? patternReadout(loopRegion, transport.startBar - 1) : null}
+        onLoopPrev={() => transport.stepLoopSection(-1)}
+        onLoopNext={() => transport.stepLoopSection(1)}
         onPlay={() => transport.play()}
+        onPause={transport.pause}
         onStop={transport.stop}
         onToStart={toStart}
         onToggleFollow={() => setFollow(!prefs.follow)}
@@ -187,6 +202,7 @@ export default function ResultsStep({
             viewport={timeline.viewport}
             view={{
               loopRegionIdx: transport.loopRegionIdx,
+              loopBars,
               startBar: transport.startBar,
               audible: id => isAudible(mixed.find(s => s.id === id), mixed),
             }}
@@ -203,6 +219,7 @@ export default function ResultsStep({
             refs={refs}
             onScrubTimeline={gestures.scrubTimeline}
             onScrubOverview={gestures.scrubOverview}
+            onLoopDrag={gestures.dragLoopRange}
             onSelect={(stemId, regionIdx) => setSelected({ stemId, regionIdx })}
             onDeselect={() => setSelected(null)}
             onAudition={(stemId, slice) => transport.audition(stemId, slice)}
