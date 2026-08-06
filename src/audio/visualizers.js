@@ -2,16 +2,37 @@ import { meterPos, dbPos, RED_DB, METER_TICKS, CLIP_AMP } from '../lib/meters.js
 
 export const CLIP_RED = '#e0483c';
 
+/**
+ * Per-canvas measurements, kept between frames.
+ *
+ * `clientWidth` is a layout read: taking it every frame made the eight track
+ * scopes and their eight meters force sixteen synchronous layouts of the whole
+ * timeline per frame. At 8 stems × 64 sections that measured as the single
+ * largest JS cost while scrolling (4.4% of all samples) and cost about a third
+ * of the frame rate. A canvas only changes size when something resizes it, so
+ * the observer says when to look again.
+ */
+const FITS = new WeakMap();
+
 /** Sizes the backing store for the device pixel ratio and returns a CSS-pixel context. */
 export function fitCanvas(el) {
-  const dpr = window.devicePixelRatio || 1;
-  const w = el.clientWidth, h = el.clientHeight;
-  if (!w || !h) return null;
-  if (el.width !== Math.round(w * dpr) || el.height !== Math.round(h * dpr)) {
-    el.width = Math.round(w * dpr);
-    el.height = Math.round(h * dpr);
+  let fit = FITS.get(el);
+  if (!fit) {
+    fit = { w: 0, h: 0, stale: true, ctx: el.getContext('2d') };
+    FITS.set(el, fit);
+    new ResizeObserver(() => { fit.stale = true; }).observe(el);
   }
-  const ctx = el.getContext('2d');
+  if (fit.stale) {
+    fit.stale = false;
+    fit.w = el.clientWidth;
+    fit.h = el.clientHeight;
+  }
+  const { ctx, w, h } = fit;
+  // Not laid out yet — measure again next frame rather than caching the zero.
+  if (!w || !h) { fit.stale = true; return null; }
+  const dpr = window.devicePixelRatio || 1;
+  const bw = Math.round(w * dpr), bh = Math.round(h * dpr);
+  if (el.width !== bw || el.height !== bh) { el.width = bw; el.height = bh; }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   return { ctx, w, h };
 }

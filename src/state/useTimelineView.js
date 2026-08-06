@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { MIN_PPM, MAX_PPM, clampPpm, ppmForRange } from '../lib/index.js';
 
 /**
@@ -29,6 +29,18 @@ export function useTimelineView({ follow, setFollow, playing }) {
         ? { scrollX: el.scrollLeft, width: el.clientWidth }
         : v));
     });
+  }, []);
+
+  // `viewport` is now the only record of how wide the scroller is (the overview
+  // indicator reads it instead of measuring the DOM every scroll tick), so a
+  // window resize has to reach it even though it fires no scroll event.
+  useEffect(() => {
+    const onResize = () => {
+      const el = scrollerRef.current;
+      if (el) setViewport({ scrollX: el.scrollLeft, width: el.clientWidth });
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   /** Zoom around a screen position so the bar under the cursor stays put. */

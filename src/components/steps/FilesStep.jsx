@@ -69,7 +69,13 @@ export default function FilesStep({
             {demoLoading ? 'Synthesizing demo song…' : 'No files handy? Load a demo:'}
           </span>
           {DEMO_LIST.map(demo => (
-            <button key={demo.id} className="btn btn-ghost" style={{ fontSize: 12, padding: '2px 8px' }}
+            <button key={demo.id} className="btn btn-ghost"
+              // The stress song is a measuring instrument, not a song — kept in
+              // reach for scripts/perf.mjs but visibly not the thing to click.
+              title={demo.stress ? 'Worst case — 8 stems, 64 sections. Takes a few seconds to synthesize.' : undefined}
+              style={demo.stress
+                ? { fontSize: 10.5, padding: '2px 6px', opacity: 0.5 }
+                : { fontSize: 12, padding: '2px 8px' }}
               onClick={() => onLoadDemo(demo.id)} disabled={demoLoading}>
               {demo.label} · {demo.bpm}
             </button>
