@@ -6,7 +6,7 @@
 Drop in your stems and an arrangement MIDI; get back sliced sample chains, `.ot` slice grids,
 and pattern-programmed banks — ready to perform.
 
-### ▶ [**Open the app**](https://xuio.github.io/octatrack-exporter/) · runs entirely in your browser, nothing is uploaded
+### ▶ [**Open the app**](https://xuio.github.io/octatrack-exporter/) · runs entirely in your browser, nothing is uploaded · installable, works offline
 
 <img src="docs/img/05-timeline.png" alt="OSSC timeline" width="100%">
 
@@ -125,16 +125,20 @@ actually audible; everything else is you refining it:
 | --- | --- |
 | **Threshold** | Raise it to drop quiet tails, lower it to keep them. Every slice re-trims live. |
 | **Drag a slice edge** | Trim it, quantized to bars. Drag past a section boundary and the overhang becomes its **own clip in the next section** — the same shape the import would have made. |
+| **Fine trim** | Open it from the selection bar: move a slice edge by *samples* on a zoomed strip of the boundary, or snap it to the nearest **zero crossing** so the slice can't click on the device. Moves the slice point only — the audio is untouched, and the offset survives later bar-level drags. |
 | **Delete / dashed blocks** | Remove a slice, or click the dashed placeholder to bring one back. |
-| **⌘Z / ⇧⌘Z** | Undo and redo — one entry per drag, and it covers renames and the threshold too, not just clip edits. |
-| **Double-click** | Rename a track or a section right in the timeline. |
-| **Space, ruler, overview strip** | Play/stop, scrub, and jump anywhere in the song. |
-| **⟳ on a section** | Loop it. Releasing the loop keeps playing rather than stopping. |
+| **⌘Z / ⇧⌘Z** | Undo and redo — one entry per drag, and it covers renames, reorders and the threshold too, not just clip edits. |
+| **Double-click** | Rename a track or a section right in the timeline. Double-click a section in the *overview strip* to zoom the timeline onto it. |
+| **Space** | Play / **pause** — pausing freezes at the audible position and play resumes exactly there, even inside a loop. Home stops back to bar 1. |
+| **⟳ on a section** | Loop it. The transport then shows the device's view — `B2 P3 · 1/2x · step 12/32`, live — with ◀ ▶ to move the loop across patterns while it plays. Releasing a loop keeps playing rather than stopping. |
+| **⇧-drag in the ruler** | Loop any bar range — the brace is drawn in the ruler for range and section loops alike. |
+| **Drag the ⋮⋮ grip** | Reorder tracks right in the timeline rail (this is the Octatrack track order). Analysis, edits and playback all survive the move. |
 | **Pinch / ⌘-scroll** | Zoom; waveform detail grows as you go in. |
 
 The whole editor is reachable from the keyboard — press **?** (or the **Keys** button) for the full
-list. Arrows walk the grid of tracks × sections, and **⇧←/→** and **⌥←/→** move the selected clip's
-start and end a bar at a time, which is how you make a bar-exact edit without a steady hand.
+list. Arrows walk the grid of tracks × sections, **⇧←/→** and **⌥←/→** move the selected clip's
+start and end a bar at a time, and **, . &lt; &gt;** nudge its edges by a millisecond (**z** snaps both
+to zero crossings) — bar-exact and click-free edits without a steady hand.
 
 Everything you change is audible immediately — trims, deletes, undo and threshold moves all re-cue
 the transport where it is playing.
@@ -148,7 +152,11 @@ you *hear* rather than what has been handed to the audio device — on Bluetooth
 between the marker leading the sound by a beat and it being in step.
 
 Edits are saved as you go. Reload the page, drop the same stems back in, and OSSC offers to put your
-trims, names and tempo back — the audio is too large to keep, but the work is not.
+trims, names and tempo back — along with the view itself: zoom, scroll, the selected clip, the loop
+and the start bar land where you left them. The audio is too large to keep, but the work is not.
+
+OSSC is also an installable PWA: once loaded, it works fully offline — everything runs client-side
+anyway, so a studio without internet changes nothing.
 
 Switch to **Table** for the pattern map: which slice each track trigs in each pattern, and on which
 step.
@@ -179,19 +187,29 @@ and you get back a complete copy under a name of your choosing:
 before a byte is written, and the part region — where scenes live — is checked byte-identical
 afterwards. On any mismatch that bank is copied through untouched and the sheet tells you so.
 
+**Delivery is your choice.** Download the result as a `.zip`, or — in Chrome and Edge — click
+**Write to folder…** and OSSC writes the project straight onto the mounted CF card via the File
+System Access API: no zip, no extracting, no wrong-folder mistakes. After a direct write it reads
+every file back **off the disk** and re-runs the full verification on what is actually there, so
+the report can honestly say *"Verified on disk"*.
+
 **Everything written is then read back.** Once the files are assembled, OSSC decodes them again —
 every trig, the slice each one fires, the per-track scales, both slice grids, the gains and all the
-checksums — and diffs that against the pattern table on screen. The report says so explicitly:
+checksums — and diffs that against the pattern table on screen. The result is rendered, not just
+prose: a green banner with the counts, and a collapsible table decoded **back out of the written
+bank bytes** — step → slice chips per pattern per track, mismatches in red.
 
-> Readback verified: 34 trigs across 7 patterns, 33 slices and every checksum decode back to
-> exactly what the pattern table shows
+The same decoder powers **Inspect programmed patterns**: drop any previously exported project on
+the Project step and see exactly what is programmed in its banks and slice grids, before touching
+anything.
 
-This cannot prove the device agrees with OSSC's reading of the file format — only a device can do
-that. What it does prove is that the writers did what this build intended, which is where every
-format bug in this project's history has actually been: a slice number stored at the wrong scale, a
-trig mask byte in the wrong half-page, the recorder's +12 dB gain default. All three would have
-failed this check before reaching a CF card, and each one is now a test case in
-[`tests/readback.test.js`](tests/readback.test.js).
+The readback pass proves the writers did what this build intended, which is where every format bug
+in this project's history had actually been: a slice number stored at the wrong scale, a trig mask
+byte in the wrong half-page, the recorder's +12 dB gain default. All three would have failed this
+check before reaching a CF card, and each one is now a test case in
+[`tests/readback.test.js`](tests/readback.test.js). And the format itself is no longer only
+reasoning: the full export path — unity gain, slice numbers, trig placement, per-track scales with
+MASTER INF — **has been verified on an Octatrack running OS 1.40**.
 
 **One step remains on the device:** on each used track, assign a **STATIC** machine and set its
 default sample (**TRK DEFAULT**) to the matching slot. Trigs carry no sample locks, so that is all
@@ -257,7 +275,13 @@ offsets, and they are all just numbers until something checks them.
 Pushing to `main` lints, tests, builds, and deploys to GitHub Pages
 ([`.github/workflows/pages.yml`](.github/workflows/pages.yml)).
 The README screenshots are regenerated with `node scripts/screenshots.mjs` against a running
-`npm run preview`.
+`npm run preview`; `node scripts/perf.mjs` measures the app at its ceiling (the built-in
+**Stress · 8×64** demo: 8 stems × 64 sections, 457 clips) — scroll frame times, long tasks,
+zoom/edit/undo latency — and `scripts/icons.mjs` regenerates the PWA icons from `public/icon.svg`.
+
+Performance at that ceiling is paint-bound, not JS-bound: zero long tasks during a full-song
+scroll and 120 fps playback with scopes on (at 1× CPU). The numbers that justified — or ruled
+out — each optimization are recorded in the code next to what they measured.
 
 ### Project structure
 
@@ -275,9 +299,11 @@ src/
     pcm.js                   band-limited resampling + PCM packing
     wav.js  aiff.js  midi.js format parsing
     analysis.js              per-measure peaks, silence trim, waveform data
-    slices.js                slice building, manual trims, boundary splitting
+    slices.js                slice building, manual + fine trims, boundary splitting
+    zerocross.js             zero-crossing search for click-free slice points
     otFile.js  bankFile.js  markersFile.js  projectFile.js   device writers
     readback.js              device-file readers + the export verifier
+    transport.js  timelineView.js   pure transport / view math
     zip.js  unzip.js  dnd.js  meters.js  demo.js
 
   audio/
@@ -288,21 +314,25 @@ src/
   waveform/WaveformCache.js  bar-anchored waveform cache
 
   export/                   "save something to disk", as pure functions
-    naming.js  stemFiles.js  patternSheet.js  projectBuild.js  download.js
+    naming.js  stemFiles.js  patternSheet.js  patternDecode.js
+    projectBuild.js  dirWrite.js  download.js
 
   state/                    one hook per concern
     usePrefs  useThemeColors  useAnimationFrame
     useStems  useMixer  useAnalysis  useSliceEdits  useHistory
     useTransport  usePlayhead  useTimelineView  useTimelineGestures  useTimelineKeys
-    useFileDrop  useProjectFolder  useDragResize  useExports
+    useFileDrop  useProjectFolder  useDragResize  useExports  useSession
 
   components/
     header/    Header, NamingPanel, ThemePicker
     steps/     FilesStep, TempoStep, RegionsStep, ResultsStep, ExportStep, ProjectStep
     timeline/  Transport, Overview, Ruler, RegionHeader, TrackRail, Lane,
-               SliceBlock, Playhead, SelectionBar, PatternTable
+               SliceBlock, Playhead, SelectionBar, FineTrim, PatternTable
+    project/   VerifyPanel, PatternTable (decoded), InspectPanel
     ui/        EditableLabel, Field, LevelMeter, Oscilloscope, DropZone,
                DropOverlay, Notices, ShortcutsPanel
+
+  public/                  PWA: manifest, icons, hand-rolled service worker
 
   styles/                  design tokens, themes, app styles
 
@@ -336,11 +366,12 @@ on-device verification and are recorded in [`docs/notes-formats.md`](docs/notes-
 importantly the trig-mask byte order (the published note is wrong for pages 2–4) and the fact that
 the slice p-lock stores a 0–127 `STRT` knob value at two ticks per slice.
 
-Verified against **Octatrack OS 1.40** (bank data version 23, markers version 4) only. The writers
-refuse to touch files whose structure doesn't match, and every generated project is read back and
-diffed against its own pattern table before you download it. That catches a writer doing something
-other than what was asked; it cannot catch OSSC and the device disagreeing about what a byte means.
-Keep a backup of your CF card and check the first generated project on the device before trusting
-it with a gig.
+Verified against **Octatrack OS 1.40** (bank data version 23, markers version 4) only — both in
+bytes and in practice: generated projects have been loaded and played back correctly on the device.
+The writers refuse to touch files whose structure doesn't match, and every generated project is
+read back and diffed against its own pattern table before it reaches your card. Still: keep a
+backup of your CF card, and give any new OS version a test project before trusting it with a gig —
+a format bump changes the data version, and the writers will (deliberately) refuse it until
+re-verified.
 
 Not affiliated with Elektron. Octatrack is a trademark of Elektron Music Machines.
